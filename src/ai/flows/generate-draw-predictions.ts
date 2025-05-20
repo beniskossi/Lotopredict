@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent that generates predictions for lottery draws.
@@ -24,10 +25,10 @@ const GenerateDrawPredictionsOutputSchema = z.object({
   predictions: z
     .array(z.number())
     .length(5)
-    .describe('An array of 5 predicted numbers for the lottery draw.'),
+    .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('The reasoning behind the generated predictions, including the analysis of historical data.'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions from the historical data.'),
 });
 export type GenerateDrawPredictionsOutput = z.infer<typeof GenerateDrawPredictionsOutputSchema>;
 
@@ -41,16 +42,28 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: GenerateDrawPredictionsInputSchema},
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `You are an expert lottery analyst. Analyze the historical data provided and predict the next 5 numbers for the lottery draw.
+  prompt: `You are a highly skilled professional lottery analyst and forecaster. Your task is to provide expert predictions for the upcoming lottery draw.
+Base your analysis on the provided historical data for the specified draw.
 
 Lottery Draw Name: {{{drawName}}}
-Historical Data: {{{historicalData}}}
+Historical Data:
+{{{historicalData}}}
 
-Provide the predicted numbers and a detailed explanation of your reasoning, including any patterns or trends you identified in the historical data.
+Your analysis should be thorough and go beyond simple frequency counts. Consider various statistical patterns, including but not limited to:
+- Number frequencies (hot and cold numbers)
+- Recency of appearance
+- Potential number pairings or clusters
+- Patterns of numbers skipping draws
+- Any other discernible trends or anomalies in the data.
 
-IMPORTANT: Make sure the 'predictions' output is an array of 5 distinct numbers between 1 and 90.
+Based on your in-depth analysis, provide 5 distinct predicted numbers between 1 and 90.
+Crucially, explain your reasoning in a professional and detailed manner. Articulate the specific patterns and statistical insights that led to your selection of each predicted number. Your reasoning should demonstrate a sophisticated understanding of lottery data analysis.
 
-Output the results in JSON format, as requested by the output schema. Do not include any extra text in the output, only the JSON. Make sure the JSON is valid.`,
+IMPORTANT:
+- The 'predictions' field in your JSON output MUST be an array of exactly 5 distinct integers, each between 1 and 90.
+- The 'reasoning' field should clearly explain the methodology and insights used.
+
+Output the results strictly in JSON format, adhering to the output schema. Ensure the JSON is valid and contains no extraneous text.`,
 });
 
 const generateDrawPredictionsFlow = ai.defineFlow(
