@@ -1,6 +1,7 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DRAW_SCHEDULE } from "@/lib/lotoDraws";
+import { DRAW_SCHEDULE } from "@/lib/lotoDraws.tsx";
 import { BarChart2, BrainCircuit, CalendarCheck2, DatabaseZap } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -29,10 +30,10 @@ export default function HomePage() {
           <div className="relative h-64 md:h-full min-h-[300px]">
             <Image 
               src="https://placehold.co/800x600.png?bg=222222&fc=FFD700" 
-              alt="Illustration LotoPredict" 
+              alt="image des boules de loterie" 
               layout="fill" 
               objectFit="cover"
-              data-ai-hint="lottery abstract"
+              data-ai-hint="lottery balls"
               priority
             />
              <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-transparent md:bg-gradient-to-t md:from-background md:via-transparent md:to-transparent"></div>
