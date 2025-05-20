@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboardPage() {
   const { currentUser } = useAuth(); 
+  const { toast } = useToast();
 
   if (!currentUser) {
     return (
@@ -22,6 +24,13 @@ export default function AdminDashboardPage() {
       </div>
     );
   }
+
+  const handleFeatureComingSoon = (featureName: string) => {
+    toast({
+      title: "Fonctionnalité en cours de développement",
+      description: `${featureName} sera bientôt disponible.`,
+    });
+  };
   
   return (
     <div className="space-y-8">
@@ -60,7 +69,7 @@ export default function AdminDashboardPage() {
             <Link href="/admin/results/add" passHref>
               <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." />
             </Link>
-            <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." disabled />
+            <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." onClick={() => handleFeatureComingSoon("La modification des résultats")} />
             <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." />
           </div>
         </CardContent>
@@ -77,8 +86,18 @@ export default function AdminDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile icon={<FileUp />} title="Importer des Données" description="Importer des résultats depuis un fichier (CSV, JSON)." />
-          <FeatureTile icon={<FileDown />} title="Exporter les Données" description="Exporter tous les résultats (CSV, JSON)." />
+          <FeatureTile 
+            icon={<FileUp />} 
+            title="Importer des Données" 
+            description="Importer des résultats depuis un fichier (CSV, JSON)." 
+            onClick={() => handleFeatureComingSoon("L'importation de données")}
+          />
+          <FeatureTile 
+            icon={<FileDown />} 
+            title="Exporter les Données" 
+            description="Exporter tous les résultats (CSV, JSON)." 
+            onClick={() => handleFeatureComingSoon("L'exportation de données")}
+          />
         </CardContent>
       </Card>
       
@@ -93,8 +112,18 @@ export default function AdminDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile icon={<BarChartHorizontalBig />} title="Statistiques des Données" description="Visualiser des métriques sur les données stockées." />
-          <FeatureTile icon={<ListChecks />} title="Journaux d'Activité" description="Suivre les opérations de synchronisation et les erreurs." />
+          <FeatureTile 
+            icon={<BarChartHorizontalBig />} 
+            title="Statistiques des Données" 
+            description="Visualiser des métriques sur les données stockées." 
+            onClick={() => handleFeatureComingSoon("Les statistiques des données")}
+          />
+          <FeatureTile 
+            icon={<ListChecks />} 
+            title="Journaux d'Activité" 
+            description="Suivre les opérations de synchronisation et les erreurs." 
+            onClick={() => handleFeatureComingSoon("Les journaux d'activité")}
+          />
         </CardContent>
       </Card>
 
@@ -107,19 +136,36 @@ interface FeatureTileProps {
   title: string;
   description: string;
   disabled?: boolean;
+  onClick?: () => void;
 }
 
-function FeatureTile({ icon, title, description, disabled }: FeatureTileProps) {
+function FeatureTile({ icon, title, description, disabled, onClick }: FeatureTileProps) {
+  const tileClasses = `p-4 border rounded-lg h-full flex flex-col ${
+    disabled || !onClick 
+      ? 'bg-muted/50 opacity-60 cursor-not-allowed' 
+      : 'bg-card hover:shadow-md transition-shadow cursor-pointer'
+  }`;
+
   const content = (
-    <div className={`p-4 border rounded-lg h-full flex flex-col ${disabled ? 'bg-muted/50 opacity-60 cursor-not-allowed' : 'bg-card hover:shadow-md transition-shadow'}`}>
+    <>
       <div className="flex items-center text-primary mb-2">
         {icon}
         <h3 className="ml-2 text-md font-semibold text-foreground">{title}</h3>
       </div>
       <p className="text-xs text-muted-foreground flex-grow">{description}</p>
       {disabled && <p className="text-xs text-primary mt-1">(Prochainement)</p>}
-    </div>
+    </>
   );
 
-  return disabled ? content : <div className="cursor-pointer h-full">{content}</div>;
+  if (disabled || !onClick) {
+    return <div className={tileClasses}>{content}</div>;
+  }
+
+  return (
+    <div className={tileClasses} onClick={onClick} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
+    >
+      {content}
+    </div>
+  );
 }
