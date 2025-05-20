@@ -20,8 +20,8 @@ export default function AdminDashboardPage() {
             <Database className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Données Stockées dans Firestore</AlertTitle>
             <AlertDescription>
-              L'application est maintenant configurée pour sauvegarder les résultats des tirages récupérés depuis la source externe
-              dans une base de données Firebase Firestore. Cela ouvre la voie à une gestion centralisée des données.
+              L'application est maintenant configurée pour sauvegarder les résultats des tirages récupérés par API depuis la source externe
+              (<code>https://lotobonheur.ci/resultats</code>) dans une base de données Firebase Firestore. Cela ouvre la voie à une gestion centralisée des données.
               L'implémentation complète d'une interface CRUD (Créer, Lire, Mettre à jour, Supprimer) pour ces données
               représente une prochaine étape de développement.
             </AlertDescription>
