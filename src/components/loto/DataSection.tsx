@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -8,8 +9,8 @@ import { LotoBall } from "./LotoBall";
 import { fetchDrawData } from '@/services/lotoData';
 import type { DrawResult } from '@/types/loto';
 import { RefreshCw } from 'lucide-react';
-import { getDrawNameBySlug } from '@/lib/lotoDraws';
-import { cn } from '@/lib/utils'; // Added this import
+import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
+import { cn } from '@/lib/utils';
 
 interface DataSectionProps {
   drawSlug: string;
@@ -80,12 +81,14 @@ export function DataSection({ drawSlug }: DataSectionProps) {
                 {data.winningNumbers.map(num => <LotoBall key={`win-${num}`} number={num} />)}
               </div>
             </div>
-            <div>
-              <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Machine</h3>
-              <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
-                {data.machineNumbers.map(num => <LotoBall key={`mac-${num}`} number={num} />)}
+            {data.machineNumbers && data.machineNumbers.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Machine</h3>
+                <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
+                  {data.machineNumbers.map(num => <LotoBall key={`mac-${num}`} number={num} />)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <p>Aucune donnée disponible.</p>
