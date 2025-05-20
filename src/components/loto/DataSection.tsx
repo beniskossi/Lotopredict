@@ -9,6 +9,7 @@ import { fetchDrawData } from '@/services/lotoData';
 import type { DrawResult } from '@/types/loto';
 import { RefreshCw } from 'lucide-react';
 import { getDrawNameBySlug } from '@/lib/lotoDraws';
+import { cn } from '@/lib/utils'; // Added this import
 
 interface DataSectionProps {
   drawSlug: string;
