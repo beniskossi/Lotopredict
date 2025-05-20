@@ -21,16 +21,12 @@ interface ConsultSectionProps {
 
 // Helper function to determine background intensity for heatmap-like effect
 const getCountCellStyle = (count: number, maxCount: number): React.CSSProperties => {
-  if (maxCount === 0) return {};
-  const intensity = Math.min(1, Math.max(0.1, count / maxCount)); // Ensure intensity is between 0.1 and 1
-  // Using HSL for --accent color and varying lightness or alpha
-  // Assuming --accent: H S L;
-  // For demonstration, let's use a fixed base color (e.g., primary or accent) and vary opacity.
-  // This will need to be adjusted based on your actual theme.
-  // Using accent color with varying alpha
-  const accentHsl = "var(--accent)"; // e.g. "39 100% 50%"
+  if (maxCount === 0 || count === 0) return {};
+  const intensity = Math.min(1, Math.max(0.1, count / maxCount)); 
+  // Using accent HSL values from globals.css: --accent: 39 100% 50%;
+  // We will vary the alpha channel of the accent color.
   return {
-    backgroundColor: `hsla(${accentHsl}, ${intensity * 0.7 + 0.1})`, // alpha from 0.1 to 0.8
+    backgroundColor: `hsla(var(--accent-h, 39), var(--accent-s, 100%), var(--accent-l, 50%), ${intensity * 0.7 + 0.1})`,
   };
 };
 
@@ -58,20 +54,20 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
     loadHistorical();
   }, [drawSlug]);
 
-  const handleSearch = useCallback(async () => {
-    const num = parseInt(inputValue);
+  const executeSearch = useCallback(async (numberToSearchStr: string) => {
+    const num = parseInt(numberToSearchStr);
     if (isNaN(num) || num < 1 || num > 90) {
       setError("Veuillez entrer un numéro valide entre 1 et 90.");
       setCoOccurrenceData(null);
-      setSelectedNumber(null);
+      setSelectedNumber(null); // Clear selected number display if input is invalid
       return;
     }
-    setSelectedNumber(num);
+    setSelectedNumber(num); // Update the number displayed as a LotoBall
     setError(null);
     setIsLoading(true);
     try {
-      if (historicalData.length === 0) {
-        setError("Données historiques non chargées. Veuillez patienter ou rafraîchir.");
+      if (historicalData.length === 0 && !isLoading) { // check isLoading to avoid race condition on initial load
+        setError("Données historiques non chargées ou en cours de chargement. Veuillez patienter ou rafraîchir.");
         setIsLoading(false);
         return;
       }
@@ -83,10 +79,22 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [drawSlug, inputValue, historicalData]);
+  }, [drawSlug, historicalData, isLoading]); // Added isLoading to dependencies
+
+  const handleSearchButtonClick = useCallback(() => {
+    executeSearch(inputValue);
+  }, [inputValue, executeSearch]);
+
+  const handleGridNumberClick = useCallback((number: number) => {
+    setInputValue(number.toString());
+    executeSearch(number.toString());
+  }, [executeSearch]);
+
 
   const drawName = getDrawNameBySlug(drawSlug);
   const maxCoOccurrenceCount = coOccurrenceData?.coOccurrences.reduce((max, item) => Math.max(max, item.count), 0) || 0;
+
+  const numberGrid = Array.from({ length: 90 }, (_, i) => i + 1);
 
   return (
     <TooltipProvider>
@@ -102,7 +110,8 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs">
                 <p className="text-sm">
-                  La section "Co-occurrences" montre à quelle fréquence le numéro que vous avez recherché est apparu
+                  Entrez un numéro (1-90) ou cliquez sur un numéro dans la grille ci-dessous.
+                  La section "Co-occurrences" montre à quelle fréquence ce numéro est apparu
                   avec d'autres numéros spécifiques lors des tirages précédents pour ce même type de jeu.
                   Les cellules de comptage sont colorées pour un effet de type heatmap : plus la couleur est intense, plus la co-occurrence est fréquente.
                   Cela peut aider à identifier des paires ou groupes de numéros qui sortent souvent ensemble.
@@ -113,8 +122,8 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
           <CardDescription>{drawName} - Fréquence d'apparition avec d'autres numéros.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex space-x-2 items-end">
-            <div className="flex-grow">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 items-start sm:items-end">
+            <div className="flex-grow w-full sm:w-auto">
               <label htmlFor="numberInput" className="block text-sm font-medium text-foreground mb-1">
                 Numéro à analyser (1-90)
               </label>
@@ -131,16 +140,39 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
               />
               <p id="numberInputHint" className="sr-only">Entrez un numéro entre 1 et 90.</p>
             </div>
-            <Button onClick={handleSearch} disabled={isLoading || historicalData.length === 0}>
+            <Button onClick={handleSearchButtonClick} disabled={isLoading || historicalData.length === 0} className="w-full sm:w-auto">
               <Search className="mr-2 h-4 w-4" /> Rechercher
             </Button>
           </div>
 
-          {isLoading && !coOccurrenceData && <Skeleton className="h-40 w-full" />}
-          {error && <p className="text-destructive">{error}</p>}
+          <div>
+            <h4 className="text-md font-medium text-foreground mb-2">Ou choisissez un numéro :</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {numberGrid.map(num => (
+                <Button
+                  key={`grid-${num}`}
+                  variant={inputValue === num.toString() && selectedNumber === num ? "default" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "h-8 w-8 p-0",
+                    inputValue === num.toString() && selectedNumber === num && "ring-2 ring-primary ring-offset-2",
+                     "transition-all"
+                  )}
+                  onClick={() => handleGridNumberClick(num)}
+                  disabled={isLoading || historicalData.length === 0}
+                  aria-label={`Analyser le numéro ${num}`}
+                >
+                  {num}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {isLoading && !coOccurrenceData && <Skeleton className="h-40 w-full mt-4" />}
+          {error && <p className="text-destructive mt-4">{error}</p>}
 
           {coOccurrenceData && selectedNumber !== null && (
-            <div>
+            <div className="mt-4">
               <h3 className="text-xl font-semibold mb-3 text-foreground">
                 Co-occurrences pour le numéro <LotoBall number={selectedNumber} size="sm" /> (Top 10)
               </h3>
@@ -159,7 +191,7 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
                           <TableCell><LotoBall number={item.number} size="sm" /></TableCell>
                           <TableCell 
                             style={getCountCellStyle(item.count, maxCoOccurrenceCount)}
-                            className="transition-colors duration-300"
+                            className="transition-colors duration-300 text-center font-medium"
                           >
                             {item.count}
                           </TableCell>
@@ -173,11 +205,11 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
               )}
             </div>
           )}
-           {!isLoading && !coOccurrenceData && !error && historicalData.length > 0 && (
-            <p className="text-muted-foreground">Entrez un numéro et cliquez sur "Rechercher" pour voir ses co-occurrences.</p>
+           {!isLoading && !coOccurrenceData && !error && historicalData.length > 0 && !selectedNumber &&(
+            <p className="text-muted-foreground mt-4">Entrez un numéro et cliquez sur "Rechercher" ou sélectionnez un numéro dans la grille pour voir ses co-occurrences.</p>
           )}
           {!isLoading && historicalData.length === 0 && !error && (
-              <p className="text-muted-foreground">Chargement des données historiques en cours...</p>
+              <p className="text-muted-foreground mt-4">Chargement des données historiques initiales en cours... Veuillez patienter.</p>
           )}
         </CardContent>
       </Card>
