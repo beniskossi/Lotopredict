@@ -77,8 +77,8 @@ export default function AdminDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile icon={<FileUp />} title="Importer des Données" description="Importer des résultats depuis un fichier (CSV, JSON)." disabled />
-          <FeatureTile icon={<FileDown />} title="Exporter les Données" description="Exporter tous les résultats (CSV, JSON)." disabled />
+          <FeatureTile icon={<FileUp />} title="Importer des Données" description="Importer des résultats depuis un fichier (CSV, JSON)." />
+          <FeatureTile icon={<FileDown />} title="Exporter les Données" description="Exporter tous les résultats (CSV, JSON)." />
         </CardContent>
       </Card>
       
@@ -93,8 +93,8 @@ export default function AdminDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile icon={<BarChartHorizontalBig />} title="Statistiques des Données" description="Visualiser des métriques sur les données stockées." disabled />
-          <FeatureTile icon={<ListChecks />} title="Journaux d'Activité" description="Suivre les opérations de synchronisation et les erreurs." disabled />
+          <FeatureTile icon={<BarChartHorizontalBig />} title="Statistiques des Données" description="Visualiser des métriques sur les données stockées." />
+          <FeatureTile icon={<ListChecks />} title="Journaux d'Activité" description="Suivre les opérations de synchronisation et les erreurs." />
         </CardContent>
       </Card>
 
