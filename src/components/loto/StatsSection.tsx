@@ -441,5 +441,3 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
     </div>
   );
 }
-
-```
