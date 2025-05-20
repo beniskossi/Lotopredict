@@ -16,7 +16,7 @@ export interface DaySchedule {
 export interface DrawResult {
   date: string;
   winningNumbers: number[];
-  machineNumbers: number[];
+  machineNumbers?: number[]; // Made optional
 }
 
 export interface HistoricalDataEntry extends DrawResult {

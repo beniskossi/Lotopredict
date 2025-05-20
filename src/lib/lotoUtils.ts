@@ -1,3 +1,5 @@
+import type { HistoricalDataEntry } from '@/types/loto';
+
 export const getBallColor = (number: number): string => {
   if (number >= 1 && number <= 9) return 'bg-slate-100 text-slate-900 border-slate-300'; // white
   if (number >= 10 && number <= 19) return 'bg-sky-300 text-sky-900 border-sky-500'; // light blue
@@ -12,8 +14,13 @@ export const getBallColor = (number: number): string => {
 };
 
 // Helper to format historical data for the AI model
-export const formatHistoricalDataForAI = (data: Array<{ winningNumbers: number[], machineNumbers: number[] }>): string => {
-  return data.map(entry => 
-    `Gagnants: ${entry.winningNumbers.join(', ')}; Machine: ${entry.machineNumbers.join(', ')}`
-  ).join('\n');
+// Use HistoricalDataEntry which now has machineNumbers as optional
+export const formatHistoricalDataForAI = (data: HistoricalDataEntry[]): string => {
+  return data.map(entry => {
+    let recordString = `Gagnants: ${entry.winningNumbers.join(', ')}`;
+    if (entry.machineNumbers && entry.machineNumbers.length > 0) {
+      recordString += `; Machine: ${entry.machineNumbers.join(', ')}`;
+    }
+    return recordString;
+  }).join('\n');
 };
