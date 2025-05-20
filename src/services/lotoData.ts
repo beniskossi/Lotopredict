@@ -1,7 +1,8 @@
 
 import type { DrawResult, HistoricalDataEntry, NumberFrequency, NumberCoOccurrence } from '@/types/loto';
-import { DRAW_SCHEDULE as APP_DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx'; // Note .tsx extension
+import { APP_DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid } from 'date-fns';
+import fr from 'date-fns/locale/fr';
 
 const API_BASE_URL = 'https://lotobonheur.ci/api/results';
 const API_HEADERS = {
@@ -10,12 +11,32 @@ const API_HEADERS = {
   'Referer': 'https://lotobonheur.ci/resultats',
 };
 
+// Helper: Create a map from normalized API draw names to canonical app draw names
+const canonicalDrawNameMap = new Map<string, string>();
+APP_DRAW_SCHEDULE.forEach(daySchedule => {
+  daySchedule.draws.forEach(draw => {
+    const canonicalName = draw.name; // e.g., "Réveil"
+    // For matching, normalize to lowercase and trim.
+    const normalizedKey = canonicalName.trim().toLowerCase();
+    if (!canonicalDrawNameMap.has(normalizedKey)) {
+        canonicalDrawNameMap.set(normalizedKey, canonicalName);
+    }
+    // For more robust matching including accents, you could add:
+    // const accentInsensitiveKey = canonicalName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    // if (normalizedKey !== accentInsensitiveKey && !canonicalDrawNameMap.has(accentInsensitiveKey)) {
+    //     canonicalDrawNameMap.set(accentInsensitiveKey, canonicalName);
+    // }
+  });
+});
+
+
 // Helper to get the API draw name (e.g., "Réveil") from our app's slug (e.g., "lundi-10h-reveil")
+// This returns the CANONICAL name as defined in lotoDraws.
 function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
   for (const daySchedule of APP_DRAW_SCHEDULE) {
     for (const draw of daySchedule.draws) {
       if (draw.slug === drawSlug) {
-        return draw.name; // This is 'Réveil', 'Étoile', etc.
+        return draw.name; 
       }
     }
   }
@@ -23,20 +44,15 @@ function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
 }
 
 // Helper to parse API date string ("Lundi DD/MM") into "YYYY-MM-DD"
-// contextYear is the year this DD/MM belongs to.
 function _parseApiDate(apiDateString: string, contextYear: number): string | null {
-  // Extracts "DD/MM" from "Jour DD/MM"
   const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/);
   if (!dayMonthMatch || !dayMonthMatch[1]) {
     console.warn(`Could not extract DD/MM from API date string: ${apiDateString}`);
     return null;
   }
-  const dayMonth = dayMonthMatch[1]; // "DD/MM"
+  const dayMonth = dayMonthMatch[1]; 
 
-  // Try parsing with date-fns. Provide a full reference date to ensure correct year context.
-  // Example: dayMonth = "01/07", contextYear = 2024 -> parse "01/07/2024"
   const parsedDate = dateFnsParse(`${dayMonth}/${contextYear}`, 'dd/MM/yyyy', new Date(contextYear, 0, 1));
-
 
   if (isValid(parsedDate)) {
     return format(parsedDate, 'yyyy-MM-dd');
@@ -46,7 +62,6 @@ function _parseApiDate(apiDateString: string, contextYear: number): string | nul
   }
 }
 
-// Helper to parse number strings like "01-02-03-04-05" into number[]
 function _parseNumbersString(numbersStr: string | null | undefined): number[] {
   if (!numbersStr || typeof numbersStr !== 'string') {
     return [];
@@ -55,13 +70,12 @@ function _parseNumbersString(numbersStr: string | null | undefined): number[] {
 }
 
 interface RawApiDraw {
-  apiDrawName: string;
+  apiDrawName: string; // This will store the CANONICAL draw name
   date: string; // YYYY-MM-DD
   winningNumbers: number[];
   machineNumbers?: number[];
 }
 
-// Fetches and parses data for a specific month "YYYY-MM"
 async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]> {
   const url = `${API_BASE_URL}?month=${yearMonth}`;
   console.log(`Fetching real data from: ${url}`);
@@ -87,9 +101,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
       console.warn(`Could not parse year from API's currentMonth field "${currentMonthStrApi}". Using year from request: ${contextYear}`);
     }
 
-
     const parsedResults: RawApiDraw[] = [];
-    const validApiDrawNames = new Set(APP_DRAW_SCHEDULE.flatMap(day => day.draws.map(draw => draw.name)));
 
     for (const week of data.drawsResultsWeekly) {
       for (const dailyResult of week.drawResultsDaily) {
@@ -102,11 +114,24 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
 
         if (dailyResult.drawResults && dailyResult.drawResults.standardDraws) {
           for (const draw of dailyResult.drawResults.standardDraws) {
-            const apiDrawName = draw.drawName;
+            const apiDrawNameFromPayload = draw.drawName;
 
-            if (!validApiDrawNames.has(apiDrawName)) {
+            if (!apiDrawNameFromPayload || typeof apiDrawNameFromPayload !== 'string') {
+              // console.warn(`Skipping draw with invalid name from payload: ${apiDrawNameFromPayload}`);
               continue;
             }
+            
+            const normalizedApiName = apiDrawNameFromPayload.trim().toLowerCase();
+            // For more robust normalization including accents:
+            // const normalizedApiName = apiDrawNameFromPayload.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            
+            const resolvedCanonicalName = canonicalDrawNameMap.get(normalizedApiName);
+
+            if (!resolvedCanonicalName) {
+              // console.log(`Skipping unknown or unmapped draw name from API: '${apiDrawNameFromPayload}' (normalized: '${normalizedApiName}')`);
+              continue;
+            }
+            
             if (draw.winningNumbers && typeof draw.winningNumbers === 'string' && draw.winningNumbers.startsWith('.')) {
               continue;
             }
@@ -116,7 +141,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
 
             if (winningNumbers.length === 5) {
               parsedResults.push({
-                apiDrawName: apiDrawName,
+                apiDrawName: resolvedCanonicalName, // Use the resolved canonical name
                 date: parsedDate, 
                 winningNumbers: winningNumbers,
                 machineNumbers: machineNumbers.length === 5 ? machineNumbers : undefined,
@@ -134,29 +159,28 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
 }
 
 export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
-  const apiDrawName = _getApiDrawNameFromSlug(drawSlug);
+  const apiDrawName = _getApiDrawNameFromSlug(drawSlug); // This is the canonical name
   if (!apiDrawName) {
     throw new Error(`Unknown draw slug: ${drawSlug}`);
   }
-  console.log(`Fetching latest draw data for slug: ${drawSlug} (API Name: ${apiDrawName})`);
+  console.log(`Fetching latest draw data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName})`);
 
   let attempts = 0;
   let currentDateIter = new Date();
 
   while (attempts < 2) { 
     const yearMonth = format(currentDateIter, 'yyyy-MM');
-    const monthData = await _fetchAndParseMonthData(yearMonth);
+    const monthData = await _fetchAndParseMonthData(yearMonth); // monthData now contains canonical apiDrawName
     
     const relevantDraws = monthData
-      .filter(d => d.apiDrawName === apiDrawName)
+      .filter(d => d.apiDrawName === apiDrawName) // Direct comparison with canonical name
       .sort((a, b) => b.date.localeCompare(a.date)); 
 
     if (relevantDraws.length > 0) {
       const latestDraw = relevantDraws[0];
-      // Ensure date is parsed correctly before formatting for display
       const drawDateObject = dateFnsParse(latestDraw.date, 'yyyy-MM-dd', new Date());
       return {
-        date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: require('date-fns/locale/fr') }) : 'Date invalide',
+        date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
         winningNumbers: latestDraw.winningNumbers,
         machineNumbers: latestDraw.machineNumbers,
       };
@@ -170,12 +194,12 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
 };
 
 export const fetchHistoricalData = async (drawSlug: string, count: number = 20): Promise<HistoricalDataEntry[]> => {
-  const apiDrawName = _getApiDrawNameFromSlug(drawSlug);
+  const apiDrawName = _getApiDrawNameFromSlug(drawSlug); // Canonical name
   if (!apiDrawName) {
     console.error(`No API draw name found for slug: ${drawSlug}`);
     return [];
   }
-  console.log(`Fetching historical data for slug: ${drawSlug} (API Name: ${apiDrawName}), count: ${count}`);
+  console.log(`Fetching historical data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName}), count: ${count}`);
 
   const allParsedEntries: RawApiDraw[] = [];
   let currentDateIter = new Date();
@@ -183,36 +207,41 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
 
   for (let i = 0; i < maxMonthsToFetch; i++) {
     const yearMonth = format(currentDateIter, 'yyyy-MM');
-    const monthData = await _fetchAndParseMonthData(yearMonth);
+    const monthData = await _fetchAndParseMonthData(yearMonth); // monthData has canonical names
     
+    // Filter for the specific canonical draw name before pushing
     const relevantDrawsInMonth = monthData.filter(d => d.apiDrawName === apiDrawName);
     allParsedEntries.push(...relevantDrawsInMonth);
 
-    // Deduplicate entries based on date and apiDrawName (in case of overlapping fetches or data issues)
-    const uniqueEntriesMap = new Map<string, RawApiDraw>();
-    allParsedEntries.forEach(entry => {
-        const key = `${entry.date}-${entry.apiDrawName}`;
-        if (!uniqueEntriesMap.has(key)) {
-            uniqueEntriesMap.set(key, entry);
-        }
-    });
-    const currentUniqueCount = Array.from(uniqueEntriesMap.values()).length;
+    // Deduplication is implicitly handled if monthData only contains unique date/canonicalName pairs
+    // but let's ensure sorting and slicing logic is based on the target draw only
+    const uniqueEntriesForTargetDraw = Array.from(new Map(
+        allParsedEntries
+            .filter(entry => entry.apiDrawName === apiDrawName) // ensure we only count for the target draw
+            .map(entry => [`${entry.date}-${entry.apiDrawName}`, entry]) 
+        ).values()
+    );
 
 
-    if (currentUniqueCount >= count && i > 0) { // Ensure we check at least one previous month if needed
+    if (uniqueEntriesForTargetDraw.length >= count && i > 0) { 
       break; 
     }
     currentDateIter = subMonths(currentDateIter, 1);
   }
   
-  let finalEntries = Array.from(new Map(allParsedEntries.map(entry => [`${entry.date}-${entry.apiDrawName}`, entry])).values());
-  finalEntries.sort((a, b) => b.date.localeCompare(a.date));
+  // Final processing on all entries collected for the specific draw
+  let finalEntries = allParsedEntries
+    .filter(entry => entry.apiDrawName === apiDrawName) // Ensure only target draw
+    .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
   
+  // Deduplicate again after all fetches for this specific draw, just in case
+  finalEntries = Array.from(new Map(finalEntries.map(entry => [`${entry.date}-${entry.apiDrawName}`, entry])).values());
+
   return finalEntries.slice(0, count).map(entry => {
     const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
     return {
       drawName: drawSlug, 
-      date: isValid(entryDateObj) ? format(entryDateObj, 'PPP', { locale: require('date-fns/locale/fr') }) : 'Date invalide',
+      date: isValid(entryDateObj) ? format(entryDateObj, 'PPP', { locale: fr }) : 'Date invalide',
       winningNumbers: entry.winningNumbers,
       machineNumbers: entry.machineNumbers,
     };
@@ -279,6 +308,3 @@ export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: 
 
   return { selectedNumber, coOccurrences };
 };
-
-
-    
