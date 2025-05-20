@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -48,8 +49,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="flex-1 p-4 md:p-6 lg:p-8">
           {children}
         </main>
-        <footer className="border-t bg-background px-4 py-6 md:px-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} LotoPredict. Tous droits réservés.
+        <footer className="border-t bg-background px-4 py-6 md:px-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            © {new Date().getFullYear()} LotoPredict. Tous droits réservés.
+          </p>
+          <Link href="/admin/dashboard" className="mt-2 inline-block text-xs text-primary hover:underline">
+            Panneau d'Administration
+          </Link>
         </footer>
       </SidebarInset>
     </SidebarProvider>
