@@ -57,7 +57,9 @@ export default function AdminDashboardPage() {
             </AlertDescription>
           </Alert>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." disabled />
+            <Link href="/admin/results/add" passHref>
+              <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." />
+            </Link>
             <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." disabled />
             <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." />
           </div>
@@ -108,14 +110,16 @@ interface FeatureTileProps {
 }
 
 function FeatureTile({ icon, title, description, disabled }: FeatureTileProps) {
-  return (
-    <div className={`p-4 border rounded-lg ${disabled ? 'bg-muted/50 opacity-60 cursor-not-allowed' : 'bg-card hover:shadow-md'}`}>
+  const content = (
+    <div className={`p-4 border rounded-lg h-full flex flex-col ${disabled ? 'bg-muted/50 opacity-60 cursor-not-allowed' : 'bg-card hover:shadow-md transition-shadow'}`}>
       <div className="flex items-center text-primary mb-2">
         {icon}
         <h3 className="ml-2 text-md font-semibold text-foreground">{title}</h3>
       </div>
-      <p className="text-xs text-muted-foreground">{description}</p>
+      <p className="text-xs text-muted-foreground flex-grow">{description}</p>
       {disabled && <p className="text-xs text-primary mt-1">(Prochainement)</p>}
     </div>
   );
+
+  return disabled ? content : <div className="cursor-pointer h-full">{content}</div>;
 }
