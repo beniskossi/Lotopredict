@@ -1,13 +1,14 @@
 
 "use client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react";
+import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { fetchAllLottoResultsForExport, type FirestoreDrawDoc } from "@/services/lotoData";
 
 export default function AdminDashboardPage() {
   const { currentUser } = useAuth(); 
@@ -30,6 +31,80 @@ export default function AdminDashboardPage() {
       title: "Fonctionnalité en cours de développement",
       description: `${featureName} sera bientôt disponible.`,
     });
+  };
+
+  const convertToCSV = (data: FirestoreDrawDoc[]): string => {
+    if (!data || data.length === 0) {
+      return "";
+    }
+
+    const header = ["docId", "apiDrawName", "date", "winningNumbers", "machineNumbers", "fetchedAt"];
+    const rows = data.map(row => {
+      const wn = row.winningNumbers.join(';'); 
+      const mn = row.machineNumbers ? row.machineNumbers.join(';') : '';
+      const fa = row.fetchedAt && (row.fetchedAt as any).toDate ? (row.fetchedAt as any).toDate().toISOString() : '';
+      
+      // Escape quotes by doubling them, and enclose in quotes
+      const sanitize = (str: string | undefined) => str ? `"${String(str).replace(/"/g, '""')}"` : '""';
+
+      return [
+        sanitize(row.docId),
+        sanitize(row.apiDrawName),
+        sanitize(row.date),
+        sanitize(wn),
+        sanitize(mn),
+        sanitize(fa)
+      ].join(',');
+    });
+
+    return [header.join(','), ...rows].join('\n');
+  };
+
+  const downloadCSV = (csvString: string, filename: string) => {
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleExportData = async () => {
+    toast({
+      title: "Exportation en cours...",
+      description: "Veuillez patienter pendant la préparation du fichier.",
+    });
+    try {
+      const results = await fetchAllLottoResultsForExport();
+      if (results.length === 0) {
+        toast({
+          variant: "default",
+          title: "Aucune donnée à exporter",
+          description: "La base de données ne contient aucun résultat de tirage.",
+        });
+        return;
+      }
+      const csvString = convertToCSV(results);
+      const filename = `loto_predict_export_${new Date().toISOString().split('T')[0]}.csv`;
+      downloadCSV(csvString, filename);
+      toast({
+        title: "Exportation Réussie",
+        description: `${results.length} résultats ont été exportés dans ${filename}.`,
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        variant: "destructive",
+        title: "Échec de l'Exportation",
+        description: "Une erreur est survenue lors de l'exportation des données.",
+      });
+    }
   };
   
   return (
@@ -93,10 +168,10 @@ export default function AdminDashboardPage() {
             onClick={() => handleFeatureComingSoon("L'importation de données")}
           />
           <FeatureTile 
-            icon={<FileDown />} 
+            icon={<Download />} 
             title="Exporter les Données" 
             description="Exporter tous les résultats (CSV, JSON)." 
-            onClick={() => handleFeatureComingSoon("L'exportation de données")}
+            onClick={handleExportData}
           />
         </CardContent>
       </Card>
@@ -135,13 +210,12 @@ interface FeatureTileProps {
   icon: React.ReactNode;
   title: string;
   description: string;
-  disabled?: boolean;
   onClick?: () => void;
 }
 
-function FeatureTile({ icon, title, description, disabled, onClick }: FeatureTileProps) {
+function FeatureTile({ icon, title, description, onClick }: FeatureTileProps) {
   const tileClasses = `p-4 border rounded-lg h-full flex flex-col ${
-    disabled || !onClick 
+    !onClick 
       ? 'bg-muted/50 opacity-60 cursor-not-allowed' 
       : 'bg-card hover:shadow-md transition-shadow cursor-pointer'
   }`;
@@ -153,11 +227,10 @@ function FeatureTile({ icon, title, description, disabled, onClick }: FeatureTil
         <h3 className="ml-2 text-md font-semibold text-foreground">{title}</h3>
       </div>
       <p className="text-xs text-muted-foreground flex-grow">{description}</p>
-      {disabled && <p className="text-xs text-primary mt-1">(Prochainement)</p>}
     </>
   );
 
-  if (disabled || !onClick) {
+  if (!onClick) {
     return <div className={tileClasses}>{content}</div>;
   }
 
