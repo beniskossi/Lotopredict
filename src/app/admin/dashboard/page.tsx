@@ -1,11 +1,12 @@
 
 "use client";
+import React from 'react'; // Added React for Suspense and lazy
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle, Download } from "lucide-react";
+import { Database, FileUp, Download, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react"; // Kept Download, removed FileDown
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
+// import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable"; // Will be dynamically imported
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { fetchAllLottoResultsForExport, type FirestoreDrawDoc } from "@/services/lotoData";
@@ -13,6 +14,7 @@ import { fetchAllLottoResultsForExport, type FirestoreDrawDoc } from "@/services
 export default function AdminDashboardPage() {
   const { currentUser } = useAuth(); 
   const { toast } = useToast();
+  const RecentDrawResultsTable = React.lazy(() => import('@/components/admin/RecentDrawResultsTable'));
 
   if (!currentUser) {
     return (
@@ -26,13 +28,6 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const handleFeatureComingSoon = (featureName: string) => {
-    toast({
-      title: "Fonctionnalité en cours de développement",
-      description: `${featureName} sera bientôt disponible.`,
-    });
-  };
-
   const convertToCSV = (data: FirestoreDrawDoc[]): string => {
     if (!data || data.length === 0) {
       return "";
@@ -41,7 +36,7 @@ export default function AdminDashboardPage() {
     const header = ["docId", "apiDrawName", "date", "winningNumbers", "machineNumbers", "fetchedAt"];
     const rows = data.map(row => {
       const wn = row.winningNumbers.join(';'); 
-      const mn = row.machineNumbers ? row.machineNumbers.join(';') : '';
+      const mn = row.machineNumbers && row.machineNumbers.length > 0 ? row.machineNumbers.join(';') : '';
       const fa = row.fetchedAt && (row.fetchedAt as any).toDate ? (row.fetchedAt as any).toDate().toISOString() : '';
       
       // Escape quotes by doubling them, and enclose in quotes
@@ -132,7 +127,9 @@ export default function AdminDashboardPage() {
         </CardHeader>
         <CardContent className="space-y-4">
            <h3 className="text-lg font-semibold text-foreground">Résultats Récents Sauvegardés</h3>
-           <RecentDrawResultsTable />
+           <React.Suspense fallback={<div className="p-4 text-center">Chargement des résultats...</div>}>
+             <RecentDrawResultsTable />
+           </React.Suspense>
           <Alert variant="default" className="border-primary/50 mt-6">
             <ShieldAlert className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Développement Futur : Interface CRUD</AlertTitle>
@@ -144,7 +141,12 @@ export default function AdminDashboardPage() {
             <Link href="/admin/results/add" passHref>
               <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." />
             </Link>
-            <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." onClick={() => handleFeatureComingSoon("La modification des résultats")} />
+            <FeatureTile 
+              icon={<Edit3 />} 
+              title="Modifier un Résultat" 
+              description="Options pour éditer des résultats existants." 
+              onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "La modification des résultats sera bientôt disponible."})} 
+            />
             <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." />
           </div>
         </CardContent>
@@ -161,12 +163,13 @@ export default function AdminDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile 
-            icon={<FileUp />} 
-            title="Importer des Données" 
-            description="Importer des résultats depuis un fichier (CSV, JSON)." 
-            onClick={() => handleFeatureComingSoon("L'importation de données")}
-          />
+          <Link href="/admin/import" passHref>
+            <FeatureTile 
+              icon={<FileUp />} 
+              title="Importer des Données" 
+              description="Importer des résultats depuis un fichier (CSV, JSON)." 
+            />
+          </Link>
           <FeatureTile 
             icon={<Download />} 
             title="Exporter les Données" 
@@ -191,13 +194,13 @@ export default function AdminDashboardPage() {
             icon={<BarChartHorizontalBig />} 
             title="Statistiques des Données" 
             description="Visualiser des métriques sur les données stockées." 
-            onClick={() => handleFeatureComingSoon("Les statistiques des données")}
+            onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les statistiques des données seront bientôt disponibles."})}
           />
           <FeatureTile 
             icon={<ListChecks />} 
             title="Journaux d'Activité" 
             description="Suivre les opérations de synchronisation et les erreurs." 
-            onClick={() => handleFeatureComingSoon("Les journaux d'activité")}
+            onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les journaux d'activité seront bientôt disponibles."})}
           />
         </CardContent>
       </Card>
