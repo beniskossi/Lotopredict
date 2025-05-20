@@ -46,7 +46,7 @@ export default function AdminDashboardPage() {
             <ShieldAlert className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Développement Futur : Interface CRUD</AlertTitle>
             <AlertDescription>
-              Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue.
+              Interface CRUD : Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue.
             </AlertDescription>
           </Alert>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
