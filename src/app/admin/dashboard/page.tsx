@@ -1,7 +1,7 @@
 
 "use client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert } from "lucide-react";
+import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -25,8 +25,15 @@ export default function AdminDashboardPage() {
   
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-primary">Tableau de Bord Admin</h1>
-      <p className="text-muted-foreground">Bienvenue, {currentUser.email} !</p>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-primary">Tableau de Bord Admin</h1>
+        {currentUser && (
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <UserCircle className="h-5 w-5" />
+            <span>{currentUser.email}</span>
+          </div>
+        )}
+      </div>
       
       <Card className="shadow-lg">
         <CardHeader>
@@ -36,7 +43,7 @@ export default function AdminDashboardPage() {
           </CardTitle>
           <CardDescription>
             Les résultats des tirages récupérés par API depuis <code>https://lotobonheur.ci/resultats</code> sont sauvegardés dans une base de données Firebase Firestore.
-            Cette section affichera les derniers résultats et permettra à terme une gestion complète (CRUD).
+            Cette section affiche les derniers résultats et permettra à terme une gestion complète (CRUD).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -46,14 +53,13 @@ export default function AdminDashboardPage() {
             <ShieldAlert className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Développement Futur : Interface CRUD</AlertTitle>
             <AlertDescription>
-              Interface CRUD : Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue.
+              Interface CRUD : Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue. La suppression est maintenant possible via le tableau ci-dessus.
             </AlertDescription>
           </Alert>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            {/* <FeatureTile icon={<ListChecks />} title="Visualiser les Données" description="Consulter les résultats stockés." disabled /> */}
             <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." disabled />
             <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." disabled />
-            <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Options pour supprimer des résultats (avec confirmation)." disabled />
+            <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." />
           </div>
         </CardContent>
       </Card>

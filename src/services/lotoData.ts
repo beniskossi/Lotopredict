@@ -15,6 +15,7 @@ import {
   orderBy, 
   limit, 
   writeBatch,
+  deleteDoc,
   serverTimestamp,
   Timestamp
 } from "firebase/firestore";
@@ -36,15 +37,16 @@ DRAW_SCHEDULE.forEach(daySchedule => {
     // Normalize: lowercase, no accents, trim for the key
     const normalizedKey = canonicalName
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") // Remove accents
+      .replace(/[\u0300-\u036f]/g, "") 
       .toLowerCase()
       .trim();
     if (!canonicalDrawNameMap.has(normalizedKey)) {
-        canonicalDrawNameMap.set(normalizedKey, canonicalName); // Map normalized to canonical
+        canonicalDrawNameMap.set(normalizedKey, canonicalName); 
     }
-    // Also map the original name to itself in case it's already canonical and used for lookup
-    if (!canonicalDrawNameMap.has(canonicalName.toLowerCase().trim())) {
-      canonicalDrawNameMap.set(canonicalName.toLowerCase().trim(), canonicalName);
+    // Also map the original name (normalized) to itself in case it's already canonical and used for lookup
+    const originalNormalizedKey = draw.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    if (!canonicalDrawNameMap.has(originalNormalizedKey)) {
+      canonicalDrawNameMap.set(originalNormalizedKey, draw.name);
     }
   });
 });
@@ -54,12 +56,50 @@ function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
   for (const daySchedule of DRAW_SCHEDULE) {
     for (const draw of daySchedule.draws) {
       if (draw.slug === drawSlug) {
-        return draw.name; // This is the canonical name from our schedule
+        return draw.name; 
       }
     }
   }
   return undefined;
 }
+
+function _normalizeApiDrawNameForDocId(apiDrawName: string): string {
+ return apiDrawName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") 
+    .replace(/\s+/g, '_') 
+    .replace(/[^\w-]/g, ''); 
+}
+
+export function constructLottoResultDocId(date: string, apiDrawName: string): string {
+  // Ensure date is in YYYY-MM-DD format
+  let formattedDate = date;
+  try {
+    const parsedInputDate = dateFnsParse(date, 'yyyy-MM-dd', new Date());
+    if (!isValid(parsedInputDate)) {
+        // Attempt to parse from PPP if not yyyy-MM-dd
+        const pppParsedDate = dateFnsParse(date, 'PPP', new Date(), { locale: fr });
+        if (isValid(pppParsedDate)) {
+            formattedDate = format(pppParsedDate, 'yyyy-MM-dd');
+        } else {
+            throw new Error('Invalid date format for doc ID construction');
+        }
+    } // If already yyyy-MM-dd, it will pass through
+  } catch (e) {
+    // If date is already in yyyy-MM-dd, parse will still work or it's truly invalid
+    const testValid = dateFnsParse(date, 'yyyy-MM-dd', new Date());
+    if (!isValid(testValid)) {
+        console.error("Date parsing failed for doc ID construction:", date, e);
+        // Fallback or throw, for now, let's throw to signal critical issue
+        throw new Error('Date is not in expected yyyy-MM-dd or PPP format for doc ID');
+    }
+  }
+
+
+  const normalizedIdNamePart = _normalizeApiDrawNameForDocId(apiDrawName);
+  return `${formattedDate}_${normalizedIdNamePart}`;
+}
+
 
 function _parseApiDate(apiDateString: string, contextYear: number): string | null {
   const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/); 
@@ -86,27 +126,22 @@ function _parseNumbersString(numbersStr: string | null | undefined): number[] {
 }
 
 export interface FirestoreDrawDoc {
+  docId?: string; // Added to store the document ID
   apiDrawName: string; 
   date: string; // YYYY-MM-DD
   winningNumbers: number[];
-  machineNumbers: number[]; // Ensure it's always an array, possibly empty
+  machineNumbers: number[]; 
   fetchedAt: Timestamp;
 }
 
-const _saveDrawsToFirestore = async (draws: Omit<FirestoreDrawDoc, 'fetchedAt'>[]): Promise<void> => {
+const _saveDrawsToFirestore = async (draws: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]): Promise<void> => {
   if (!draws.length) return;
   const batch = writeBatch(db);
   draws.forEach(draw => {
-    const normalizedIdNamePart = draw.apiDrawName
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") 
-        .replace(/\s+/g, '_') 
-        .replace(/[^\w-]/g, ''); 
-
-    const docId = `${draw.date}_${normalizedIdNamePart}`;
+    const docId = constructLottoResultDocId(draw.date, draw.apiDrawName);
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
     
-    const dataToSave: FirestoreDrawDoc = { 
+    const dataToSave: Omit<FirestoreDrawDoc, 'docId'> = { 
       ...draw, 
       fetchedAt: serverTimestamp() as Timestamp
     };
@@ -119,7 +154,7 @@ const _saveDrawsToFirestore = async (draws: Omit<FirestoreDrawDoc, 'fetchedAt'>[
   }
 };
 
-async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<FirestoreDrawDoc, 'fetchedAt'>[]> {
+async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]> {
   const url = `${API_BASE_URL}?month=${yearMonth}`;
   try {
     const response = await fetch(url, { headers: API_HEADERS });
@@ -142,7 +177,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<Firestor
     }
 
 
-    const parsedResults: Omit<FirestoreDrawDoc, 'fetchedAt'>[] = [];
+    const parsedResults: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[] = [];
 
     for (const week of data.drawsResultsWeekly) {
       for (const dailyResult of week.drawResultsDaily) {
@@ -309,7 +344,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => {
-      firestoreResults.push(doc.data() as FirestoreDrawDoc);
+      firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
     });
   } catch (error) {
     console.error(`Error fetching historical data for ${canonicalDrawName} from Firestore:`, error);
@@ -343,7 +378,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
       const querySnapshot = await getDocs(q);
       firestoreResults = []; 
       querySnapshot.forEach(doc => {
-        firestoreResults.push(doc.data() as FirestoreDrawDoc);
+        firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
       });
     } catch (error) {
       console.error(`Error re-fetching historical data for ${canonicalDrawName} from Firestore after API sync:`, error);
@@ -428,20 +463,38 @@ export const fetchRecentLottoResults = async (count: number = 20): Promise<Fires
   try {
     const q = query(
       collection(db, RESULTS_COLLECTION_NAME),
-      orderBy("date", "desc"), // Order by date string (YYYY-MM-DD)
-      // Consider adding a secondary sort by fetchedAt if dates can be identical and order matters
-      // orderBy("fetchedAt", "desc"), 
+      orderBy("date", "desc"), 
+      orderBy("fetchedAt", "desc"), 
       limit(count)
     );
     const querySnapshot = await getDocs(q);
     const results: FirestoreDrawDoc[] = [];
     querySnapshot.forEach(doc => {
-      results.push(doc.data() as FirestoreDrawDoc);
+      results.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
     });
     return results;
   } catch (error) {
     console.error("Error fetching recent lotto results from Firestore:", error);
-    return []; // Return empty array on error
+    return []; 
   }
 };
 
+/**
+ * Deletes a lottery result document from Firestore by its ID.
+ * @param docId The ID of the document to delete.
+ * @returns A promise that resolves when the deletion is complete.
+ */
+export const deleteLottoResult = async (docId: string): Promise<void> => {
+  if (!docId) {
+    throw new Error("Document ID is required for deletion.");
+  }
+  try {
+    const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error(`Error deleting lotto result with ID ${docId} from Firestore:`, error);
+    throw error; // Re-throw the error to be handled by the caller
+  }
+};
+
+```
