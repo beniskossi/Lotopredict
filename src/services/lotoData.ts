@@ -1,80 +1,268 @@
+
 import type { DrawResult, HistoricalDataEntry, NumberFrequency, NumberCoOccurrence } from '@/types/loto';
+import { DRAW_SCHEDULE as APP_DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx'; // Note .tsx extension
+import { format, subMonths, parse as dateFnsParse, isValid } from 'date-fns';
 
-// Mock function to simulate fetching draw data
-export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
-  console.log(`Fetching data for ${drawSlug}... (mocked)`);
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // Generate random numbers for mock data
-  const generateNumbers = (count: number, max: number): number[] => {
-    const numbers = new Set<number>();
-    while (numbers.size < count) {
-      numbers.add(Math.floor(Math.random() * max) + 1);
-    }
-    return Array.from(numbers).sort((a, b) => a - b);
-  };
-
-  return {
-    date: new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }),
-    winningNumbers: generateNumbers(5, 90),
-    machineNumbers: generateNumbers(5, 90),
-  };
+const API_BASE_URL = 'https://lotobonheur.ci/api/results';
+const API_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  'Accept': 'application/json',
+  'Referer': 'https://lotobonheur.ci/resultats',
 };
 
-// Mock function to fetch historical data for a specific draw
-export const fetchHistoricalData = async (drawSlug: string, count: number = 20): Promise<HistoricalDataEntry[]> => {
-  console.log(`Fetching historical data for ${drawSlug}... (mocked)`);
-  await new Promise(resolve => setTimeout(resolve, 700));
-
-  const generateNumbers = (count: number, max: number): number[] => {
-    const numbers = new Set<number>();
-    while (numbers.size < count) {
-      numbers.add(Math.floor(Math.random() * max) + 1);
+// Helper to get the API draw name (e.g., "Réveil") from our app's slug (e.g., "lundi-10h-reveil")
+function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
+  for (const daySchedule of APP_DRAW_SCHEDULE) {
+    for (const draw of daySchedule.draws) {
+      if (draw.slug === drawSlug) {
+        return draw.name; // This is 'Réveil', 'Étoile', etc.
+      }
     }
-    return Array.from(numbers).sort((a, b) => a - b);
-  };
-  
-  const historicalEntries: HistoricalDataEntry[] = [];
-  for (let i = 0; i < count; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i * (Math.floor(Math.random()*3)+1) ); // Simulate draws on different past days
-    historicalEntries.push({
-      drawName: drawSlug, // In a real scenario, this might be part of the stored data
-      date: date.toLocaleDateString('fr-FR'),
-      winningNumbers: generateNumbers(5, 90),
-      machineNumbers: generateNumbers(5, 90),
-    });
   }
-  return historicalEntries;
+  return undefined;
+}
+
+// Helper to parse API date string ("Lundi DD/MM") into "YYYY-MM-DD"
+// contextYear is the year this DD/MM belongs to.
+function _parseApiDate(apiDateString: string, contextYear: number): string | null {
+  // Extracts "DD/MM" from "Jour DD/MM"
+  const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/);
+  if (!dayMonthMatch || !dayMonthMatch[1]) {
+    console.warn(`Could not extract DD/MM from API date string: ${apiDateString}`);
+    return null;
+  }
+  const dayMonth = dayMonthMatch[1]; // "DD/MM"
+
+  // Try parsing with date-fns. Provide a full reference date to ensure correct year context.
+  // Example: dayMonth = "01/07", contextYear = 2024 -> parse "01/07/2024"
+  const parsedDate = dateFnsParse(`${dayMonth}/${contextYear}`, 'dd/MM/yyyy', new Date(contextYear, 0, 1));
+
+
+  if (isValid(parsedDate)) {
+    return format(parsedDate, 'yyyy-MM-dd');
+  } else {
+    console.warn(`Invalid date after parsing: ${dayMonth} with year ${contextYear}. Parsed as: ${parsedDate}`);
+    return null;
+  }
+}
+
+// Helper to parse number strings like "01-02-03-04-05" into number[]
+function _parseNumbersString(numbersStr: string | null | undefined): number[] {
+  if (!numbersStr || typeof numbersStr !== 'string') {
+    return [];
+  }
+  return (numbersStr.match(/\d+/g) || []).map(Number).slice(0, 5);
+}
+
+interface RawApiDraw {
+  apiDrawName: string;
+  date: string; // YYYY-MM-DD
+  winningNumbers: number[];
+  machineNumbers?: number[];
+}
+
+// Fetches and parses data for a specific month "YYYY-MM"
+async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]> {
+  const url = `${API_BASE_URL}?month=${yearMonth}`;
+  console.log(`Fetching real data from: ${url}`);
+  try {
+    const response = await fetch(url, { headers: API_HEADERS });
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status} for ${url}`);
+    }
+    const data = await response.json();
+
+    if (!data.success || !data.drawsResultsWeekly) {
+      console.warn(`API response not successful or missing drawsResultsWeekly for ${yearMonth}:`, data);
+      return [];
+    }
+    
+    let contextYear: number;
+    const currentMonthStrApi = data.currentMonth; 
+    const yearMatch = currentMonthStrApi?.match(/\b(\d{4})\b/);
+    if (yearMatch && yearMatch[1]) {
+      contextYear = parseInt(yearMatch[1], 10);
+    } else {
+      contextYear = parseInt(yearMonth.split('-')[0], 10);
+      console.warn(`Could not parse year from API's currentMonth field "${currentMonthStrApi}". Using year from request: ${contextYear}`);
+    }
+
+
+    const parsedResults: RawApiDraw[] = [];
+    const validApiDrawNames = new Set(APP_DRAW_SCHEDULE.flatMap(day => day.draws.map(draw => draw.name)));
+
+    for (const week of data.drawsResultsWeekly) {
+      for (const dailyResult of week.drawResultsDaily) {
+        const apiDateStr = dailyResult.date; 
+        const parsedDate = _parseApiDate(apiDateStr, contextYear);
+        if (!parsedDate) {
+          console.warn(`Skipping entry due to unparsable date: ${apiDateStr} for year ${contextYear}`);
+          continue;
+        }
+
+        if (dailyResult.drawResults && dailyResult.drawResults.standardDraws) {
+          for (const draw of dailyResult.drawResults.standardDraws) {
+            const apiDrawName = draw.drawName;
+
+            if (!validApiDrawNames.has(apiDrawName)) {
+              continue;
+            }
+            if (draw.winningNumbers && typeof draw.winningNumbers === 'string' && draw.winningNumbers.startsWith('.')) {
+              continue;
+            }
+
+            const winningNumbers = _parseNumbersString(draw.winningNumbers);
+            const machineNumbers = _parseNumbersString(draw.machineNumbers);
+
+            if (winningNumbers.length === 5) {
+              parsedResults.push({
+                apiDrawName: apiDrawName,
+                date: parsedDate, 
+                winningNumbers: winningNumbers,
+                machineNumbers: machineNumbers.length === 5 ? machineNumbers : undefined,
+              });
+            }
+          }
+        }
+      }
+    }
+    return parsedResults;
+  } catch (error) {
+    console.error(`Error fetching or parsing data for ${yearMonth}:`, error);
+    return []; 
+  }
+}
+
+export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
+  const apiDrawName = _getApiDrawNameFromSlug(drawSlug);
+  if (!apiDrawName) {
+    throw new Error(`Unknown draw slug: ${drawSlug}`);
+  }
+  console.log(`Fetching latest draw data for slug: ${drawSlug} (API Name: ${apiDrawName})`);
+
+  let attempts = 0;
+  let currentDateIter = new Date();
+
+  while (attempts < 2) { 
+    const yearMonth = format(currentDateIter, 'yyyy-MM');
+    const monthData = await _fetchAndParseMonthData(yearMonth);
+    
+    const relevantDraws = monthData
+      .filter(d => d.apiDrawName === apiDrawName)
+      .sort((a, b) => b.date.localeCompare(a.date)); 
+
+    if (relevantDraws.length > 0) {
+      const latestDraw = relevantDraws[0];
+      // Ensure date is parsed correctly before formatting for display
+      const drawDateObject = dateFnsParse(latestDraw.date, 'yyyy-MM-dd', new Date());
+      return {
+        date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: require('date-fns/locale/fr') }) : 'Date invalide',
+        winningNumbers: latestDraw.winningNumbers,
+        machineNumbers: latestDraw.machineNumbers,
+      };
+    }
+    
+    currentDateIter = subMonths(currentDateIter, 1);
+    attempts++;
+  }
+
+  throw new Error(`No data found for draw ${apiDrawName} (slug: ${drawSlug}) after checking 2 months.`);
 };
 
-// Mock function for number frequency statistics
-export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDataEntry[]): Promise<NumberFrequency[]> => {
-  console.log(`Fetching number frequency for ${drawSlug}... (mocked)`);
-  const historicalData = data || await fetchHistoricalData(drawSlug, 50); // Use provided data or fetch 50 entries
-  
-  const allNumbers = historicalData.flatMap(entry => [...entry.winningNumbers, ...entry.machineNumbers]);
-  const frequencyMap: Record<number, number> = {};
+export const fetchHistoricalData = async (drawSlug: string, count: number = 20): Promise<HistoricalDataEntry[]> => {
+  const apiDrawName = _getApiDrawNameFromSlug(drawSlug);
+  if (!apiDrawName) {
+    console.error(`No API draw name found for slug: ${drawSlug}`);
+    return [];
+  }
+  console.log(`Fetching historical data for slug: ${drawSlug} (API Name: ${apiDrawName}), count: ${count}`);
 
+  const allParsedEntries: RawApiDraw[] = [];
+  let currentDateIter = new Date();
+  const maxMonthsToFetch = 12; 
+
+  for (let i = 0; i < maxMonthsToFetch; i++) {
+    const yearMonth = format(currentDateIter, 'yyyy-MM');
+    const monthData = await _fetchAndParseMonthData(yearMonth);
+    
+    const relevantDrawsInMonth = monthData.filter(d => d.apiDrawName === apiDrawName);
+    allParsedEntries.push(...relevantDrawsInMonth);
+
+    // Deduplicate entries based on date and apiDrawName (in case of overlapping fetches or data issues)
+    const uniqueEntriesMap = new Map<string, RawApiDraw>();
+    allParsedEntries.forEach(entry => {
+        const key = `${entry.date}-${entry.apiDrawName}`;
+        if (!uniqueEntriesMap.has(key)) {
+            uniqueEntriesMap.set(key, entry);
+        }
+    });
+    const currentUniqueCount = Array.from(uniqueEntriesMap.values()).length;
+
+
+    if (currentUniqueCount >= count && i > 0) { // Ensure we check at least one previous month if needed
+      break; 
+    }
+    currentDateIter = subMonths(currentDateIter, 1);
+  }
+  
+  let finalEntries = Array.from(new Map(allParsedEntries.map(entry => [`${entry.date}-${entry.apiDrawName}`, entry])).values());
+  finalEntries.sort((a, b) => b.date.localeCompare(a.date));
+  
+  return finalEntries.slice(0, count).map(entry => {
+    const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
+    return {
+      drawName: drawSlug, 
+      date: isValid(entryDateObj) ? format(entryDateObj, 'PPP', { locale: require('date-fns/locale/fr') }) : 'Date invalide',
+      winningNumbers: entry.winningNumbers,
+      machineNumbers: entry.machineNumbers,
+    };
+  });
+};
+
+export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDataEntry[]): Promise<NumberFrequency[]> => {
+  console.log(`Calculating number frequency for ${drawSlug}...`);
+  const historicalData = data || await fetchHistoricalData(drawSlug, 50); 
+  
+  if (historicalData.length === 0) {
+    console.warn(`No historical data for ${drawSlug} to calculate frequency.`);
+    return [];
+  }
+
+  const allNumbers = historicalData.flatMap(entry => {
+    const nums = [...entry.winningNumbers];
+    if (entry.machineNumbers) {
+      nums.push(...entry.machineNumbers);
+    }
+    return nums;
+  });
+
+  const frequencyMap: Record<number, number> = {};
   allNumbers.forEach(num => {
     frequencyMap[num] = (frequencyMap[num] || 0) + 1;
   });
 
   return Object.entries(frequencyMap)
     .map(([numStr, freq]) => ({ number: parseInt(numStr), frequency: freq }))
-    .sort((a, b) => b.frequency - a.frequency);
+    .sort((a, b) => b.frequency - a.frequency || a.number - b.number);
 };
 
-// Mock function for number co-occurrence
 export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: number, data?: HistoricalDataEntry[]): Promise<NumberCoOccurrence> => {
-  console.log(`Fetching co-occurrence for number ${selectedNumber} in ${drawSlug}... (mocked)`);
+  console.log(`Calculating co-occurrence for number ${selectedNumber} in ${drawSlug}...`);
   const historicalData = data || await fetchHistoricalData(drawSlug, 50);
+
+  if (historicalData.length === 0) {
+    console.warn(`No historical data for ${drawSlug} to calculate co-occurrence.`);
+    return { selectedNumber, coOccurrences: [] };
+  }
 
   const coOccurrenceMap: Record<number, number> = {};
 
   historicalData.forEach(entry => {
-    const combinedNumbers = [...entry.winningNumbers, ...entry.machineNumbers];
+    const combinedNumbers = [...entry.winningNumbers];
+    if (entry.machineNumbers) {
+      combinedNumbers.push(...entry.machineNumbers);
+    }
+    
     if (combinedNumbers.includes(selectedNumber)) {
       combinedNumbers.forEach(num => {
         if (num !== selectedNumber) {
@@ -86,8 +274,11 @@ export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: 
   
   const coOccurrences = Object.entries(coOccurrenceMap)
     .map(([numStr, count]) => ({ number: parseInt(numStr), count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10); // Top 10 co-occurring numbers
+    .sort((a, b) => b.count - a.count || a.number - b.number)
+    .slice(0, 10); 
 
   return { selectedNumber, coOccurrences };
 };
+
+
+    
