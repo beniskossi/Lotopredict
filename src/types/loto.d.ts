@@ -1,4 +1,6 @@
+
 import type { LucideIcon } from 'lucide-react';
+import type { Timestamp } from 'firebase/firestore';
 
 export interface Draw {
   name: string;
@@ -14,13 +16,13 @@ export interface DaySchedule {
 }
 
 export interface DrawResult {
-  date: string;
+  date: string; // Display format, e.g., "25 juil. 2024"
   winningNumbers: number[];
-  machineNumbers?: number[]; // Made optional
+  machineNumbers?: number[];
 }
 
 export interface HistoricalDataEntry extends DrawResult {
-  drawName: string;
+  drawName: string; // This is the drawSlug
 }
 
 export interface NumberFrequency {
@@ -34,4 +36,37 @@ export interface NumberCoOccurrence {
     number: number;
     count: number;
   }>;
+}
+
+// For Firestore storage
+export interface FirestoreDrawDoc {
+  docId?: string; 
+  apiDrawName: string; // Canonical draw name used by the API/system
+  date: string; // YYYY-MM-DD format for storage and sorting
+  winningNumbers: number[];
+  machineNumbers: number[]; // Stored as empty array if not present
+  fetchedAt: Timestamp;
+}
+
+// For the manual add result form
+export interface ManualAddResultFormInput {
+  drawSlug: string;
+  date: Date;
+  wn1?: number;
+  wn2?: number;
+  wn3?: number;
+  wn4?: number;
+  wn5?: number;
+  mn1?: number;
+  mn2?: number;
+  mn3?: number;
+  mn4?: number;
+  mn5?: number;
+}
+
+export interface ManualLottoResultInput {
+  drawSlug: string;
+  date: Date; // JS Date object from form
+  winningNumbers: number[];
+  machineNumbers?: number[]; // Optional, will be empty array if not provided
 }
