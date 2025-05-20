@@ -15,17 +15,12 @@ const API_HEADERS = {
 const canonicalDrawNameMap = new Map<string, string>();
 DRAW_SCHEDULE.forEach(daySchedule => {
   daySchedule.draws.forEach(draw => {
-    const canonicalName = draw.name; // e.g., "Réveil"
-    // For matching, normalize to lowercase and trim.
-    const normalizedKey = canonicalName.trim().toLowerCase();
-    if (!canonicalDrawNameMap.has(normalizedKey)) {
-        canonicalDrawNameMap.set(normalizedKey, canonicalName);
+    const canonicalName = draw.name; // e.g., "Réveil", "Étoile"
+    // For matching, normalize to lowercase, trim, and remove accents.
+    const accentInsensitiveKey = canonicalName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    if (!canonicalDrawNameMap.has(accentInsensitiveKey)) {
+        canonicalDrawNameMap.set(accentInsensitiveKey, canonicalName); // Map "reveil" -> "Réveil", "etoile" -> "Étoile"
     }
-    // For more robust matching including accents, you could add:
-    // const accentInsensitiveKey = canonicalName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    // if (normalizedKey !== accentInsensitiveKey && !canonicalDrawNameMap.has(accentInsensitiveKey)) {
-    //     canonicalDrawNameMap.set(accentInsensitiveKey, canonicalName);
-    // }
   });
 });
 
@@ -78,7 +73,7 @@ interface RawApiDraw {
 
 async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]> {
   const url = `${API_BASE_URL}?month=${yearMonth}`;
-  console.log(`Fetching real data from: ${url}`);
+  // console.log(`Fetching real data from: ${url}`);
   try {
     const response = await fetch(url, { headers: API_HEADERS });
     if (!response.ok) {
@@ -87,7 +82,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
     const data = await response.json();
 
     if (!data.success || !data.drawsResultsWeekly) {
-      console.warn(`API response not successful or missing drawsResultsWeekly for ${yearMonth}:`, data);
+      // console.warn(`API response not successful or missing drawsResultsWeekly for ${yearMonth}:`, data);
       return [];
     }
     
@@ -98,7 +93,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
       contextYear = parseInt(yearMatch[1], 10);
     } else {
       contextYear = parseInt(yearMonth.split('-')[0], 10);
-      console.warn(`Could not parse year from API's currentMonth field "${currentMonthStrApi}". Using year from request: ${contextYear}`);
+      // console.warn(`Could not parse year from API's currentMonth field "${currentMonthStrApi}". Using year from request: ${contextYear}`);
     }
 
     const parsedResults: RawApiDraw[] = [];
@@ -108,7 +103,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
         const apiDateStr = dailyResult.date; 
         const parsedDate = _parseApiDate(apiDateStr, contextYear);
         if (!parsedDate) {
-          console.warn(`Skipping entry due to unparsable date: ${apiDateStr} for year ${contextYear}`);
+          // console.warn(`Skipping entry due to unparsable date: ${apiDateStr} for year ${contextYear}`);
           continue;
         }
 
@@ -121,18 +116,18 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
               continue;
             }
             
-            const normalizedApiName = apiDrawNameFromPayload.trim().toLowerCase();
-            // For more robust normalization including accents:
-            // const normalizedApiName = apiDrawNameFromPayload.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            // Normalize the name from API payload (accent-insensitive, lowercase, trim)
+            const normalizedApiNameToLookup = apiDrawNameFromPayload.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
             
-            const resolvedCanonicalName = canonicalDrawNameMap.get(normalizedApiName);
+            const resolvedCanonicalName = canonicalDrawNameMap.get(normalizedApiNameToLookup);
 
             if (!resolvedCanonicalName) {
-              // console.log(`Skipping unknown or unmapped draw name from API: '${apiDrawNameFromPayload}' (normalized: '${normalizedApiName}')`);
+              // console.log(`Skipping unknown or unmapped draw name from API: '${apiDrawNameFromPayload}' (normalized: '${normalizedApiNameToLookup}')`);
               continue;
             }
             
             if (draw.winningNumbers && typeof draw.winningNumbers === 'string' && draw.winningNumbers.startsWith('.')) {
+              // console.log(`Skipping draw '${resolvedCanonicalName}' on date '${parsedDate}' due to winningNumbers starting with '.'`);
               continue;
             }
 
@@ -147,6 +142,9 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
                 machineNumbers: machineNumbers.length === 5 ? machineNumbers : undefined,
               });
             }
+            // else {
+            //   console.warn(`Skipping draw '${resolvedCanonicalName}' on date '${parsedDate}' due to incomplete winning numbers: ${winningNumbers.length} found.`);
+            // }
           }
         }
       }
@@ -163,7 +161,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
   if (!apiDrawName) {
     throw new Error(`Unknown draw slug: ${drawSlug}`);
   }
-  console.log(`Fetching latest draw data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName})`);
+  // console.log(`Fetching latest draw data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName})`);
 
   let attempts = 0;
   let currentDateIter = new Date();
@@ -199,7 +197,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     console.error(`No API draw name found for slug: ${drawSlug}`);
     return [];
   }
-  console.log(`Fetching historical data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName}), count: ${count}`);
+  // console.log(`Fetching historical data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName}), count: ${count}`);
 
   const allParsedEntries: RawApiDraw[] = [];
   let currentDateIter = new Date();
@@ -209,15 +207,12 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     const yearMonth = format(currentDateIter, 'yyyy-MM');
     const monthData = await _fetchAndParseMonthData(yearMonth); // monthData has canonical names
     
-    // Filter for the specific canonical draw name before pushing
     const relevantDrawsInMonth = monthData.filter(d => d.apiDrawName === apiDrawName);
     allParsedEntries.push(...relevantDrawsInMonth);
 
-    // Deduplication is implicitly handled if monthData only contains unique date/canonicalName pairs
-    // but let's ensure sorting and slicing logic is based on the target draw only
     const uniqueEntriesForTargetDraw = Array.from(new Map(
         allParsedEntries
-            .filter(entry => entry.apiDrawName === apiDrawName) // ensure we only count for the target draw
+            .filter(entry => entry.apiDrawName === apiDrawName) 
             .map(entry => [`${entry.date}-${entry.apiDrawName}`, entry]) 
         ).values()
     );
@@ -229,12 +224,10 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     currentDateIter = subMonths(currentDateIter, 1);
   }
   
-  // Final processing on all entries collected for the specific draw
   let finalEntries = allParsedEntries
-    .filter(entry => entry.apiDrawName === apiDrawName) // Ensure only target draw
-    .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
+    .filter(entry => entry.apiDrawName === apiDrawName) 
+    .sort((a, b) => b.date.localeCompare(a.date)); 
   
-  // Deduplicate again after all fetches for this specific draw, just in case
   finalEntries = Array.from(new Map(finalEntries.map(entry => [`${entry.date}-${entry.apiDrawName}`, entry])).values());
 
   return finalEntries.slice(0, count).map(entry => {
@@ -249,11 +242,11 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
 };
 
 export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDataEntry[]): Promise<NumberFrequency[]> => {
-  console.log(`Calculating number frequency for ${drawSlug}...`);
+  // console.log(`Calculating number frequency for ${drawSlug}...`);
   const historicalData = data || await fetchHistoricalData(drawSlug, 50); 
   
   if (historicalData.length === 0) {
-    console.warn(`No historical data for ${drawSlug} to calculate frequency.`);
+    // console.warn(`No historical data for ${drawSlug} to calculate frequency.`);
     return [];
   }
 
@@ -276,11 +269,11 @@ export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDa
 };
 
 export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: number, data?: HistoricalDataEntry[]): Promise<NumberCoOccurrence> => {
-  console.log(`Calculating co-occurrence for number ${selectedNumber} in ${drawSlug}...`);
+  // console.log(`Calculating co-occurrence for number ${selectedNumber} in ${drawSlug}...`);
   const historicalData = data || await fetchHistoricalData(drawSlug, 50);
 
   if (historicalData.length === 0) {
-    console.warn(`No historical data for ${drawSlug} to calculate co-occurrence.`);
+    // console.warn(`No historical data for ${drawSlug} to calculate co-occurrence.`);
     return { selectedNumber, coOccurrences: [] };
   }
 
