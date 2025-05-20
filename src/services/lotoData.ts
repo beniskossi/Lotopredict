@@ -1,6 +1,6 @@
 
 import type { DrawResult, HistoricalDataEntry, NumberFrequency, NumberCoOccurrence } from '@/types/loto';
-import { APP_DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
+import { DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid } from 'date-fns';
 import fr from 'date-fns/locale/fr';
 
@@ -13,7 +13,7 @@ const API_HEADERS = {
 
 // Helper: Create a map from normalized API draw names to canonical app draw names
 const canonicalDrawNameMap = new Map<string, string>();
-APP_DRAW_SCHEDULE.forEach(daySchedule => {
+DRAW_SCHEDULE.forEach(daySchedule => {
   daySchedule.draws.forEach(draw => {
     const canonicalName = draw.name; // e.g., "Réveil"
     // For matching, normalize to lowercase and trim.
@@ -33,7 +33,7 @@ APP_DRAW_SCHEDULE.forEach(daySchedule => {
 // Helper to get the API draw name (e.g., "Réveil") from our app's slug (e.g., "lundi-10h-reveil")
 // This returns the CANONICAL name as defined in lotoDraws.
 function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
-  for (const daySchedule of APP_DRAW_SCHEDULE) {
+  for (const daySchedule of DRAW_SCHEDULE) {
     for (const draw of daySchedule.draws) {
       if (draw.slug === drawSlug) {
         return draw.name; 
@@ -308,3 +308,4 @@ export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: 
 
   return { selectedNumber, coOccurrences };
 };
+
