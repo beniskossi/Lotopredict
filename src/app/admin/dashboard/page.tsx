@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function AdminDashboardPage() {
   const { currentUser } = useAuth(); 
@@ -112,4 +113,3 @@ function FeatureTile({ icon, title, description, disabled }: FeatureTileProps) {
     </div>
   );
 }
-
