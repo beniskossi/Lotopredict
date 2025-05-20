@@ -1,8 +1,23 @@
 
-import type { DrawResult, HistoricalDataEntry, NumberFrequency, NumberCoOccurrence } from '@/types/loto';
+import type { DrawResult, HistoricalDataEntry } from '@/types/loto';
 import { DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
-import { format, subMonths, parse as dateFnsParse, isValid } from 'date-fns';
+import { format, subMonths, parse as dateFnsParse, isValid, getYear } from 'date-fns';
 import fr from 'date-fns/locale/fr';
+import { db } from '@/lib/firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  writeBatch,
+  serverTimestamp,
+  Timestamp
+} from "firebase/firestore";
 
 const API_BASE_URL = 'https://lotobonheur.ci/api/results';
 const API_HEADERS = {
@@ -11,22 +26,19 @@ const API_HEADERS = {
   'Referer': 'https://lotobonheur.ci/resultats',
 };
 
-// Helper: Create a map from normalized API draw names to canonical app draw names
+const RESULTS_COLLECTION_NAME = 'lottoResults';
+
 const canonicalDrawNameMap = new Map<string, string>();
 DRAW_SCHEDULE.forEach(daySchedule => {
   daySchedule.draws.forEach(draw => {
-    const canonicalName = draw.name; // e.g., "Réveil", "Étoile"
-    // For matching, normalize to lowercase, trim, and remove accents.
-    const accentInsensitiveKey = canonicalName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    if (!canonicalDrawNameMap.has(accentInsensitiveKey)) {
-        canonicalDrawNameMap.set(accentInsensitiveKey, canonicalName); // Map "reveil" -> "Réveil", "etoile" -> "Étoile"
+    const canonicalName = draw.name;
+    const normalizedKey = canonicalName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    if (!canonicalDrawNameMap.has(normalizedKey)) {
+        canonicalDrawNameMap.set(normalizedKey, canonicalName);
     }
   });
 });
 
-
-// Helper to get the API draw name (e.g., "Réveil") from our app's slug (e.g., "lundi-10h-reveil")
-// This returns the CANONICAL name as defined in lotoDraws.
 function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
   for (const daySchedule of DRAW_SCHEDULE) {
     for (const draw of daySchedule.draws) {
@@ -38,21 +50,17 @@ function _getApiDrawNameFromSlug(drawSlug: string): string | undefined {
   return undefined;
 }
 
-// Helper to parse API date string ("Lundi DD/MM") into "YYYY-MM-DD"
 function _parseApiDate(apiDateString: string, contextYear: number): string | null {
   const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/);
   if (!dayMonthMatch || !dayMonthMatch[1]) {
-    console.warn(`Could not extract DD/MM from API date string: ${apiDateString}`);
     return null;
   }
   const dayMonth = dayMonthMatch[1]; 
-
   const parsedDate = dateFnsParse(`${dayMonth}/${contextYear}`, 'dd/MM/yyyy', new Date(contextYear, 0, 1));
 
   if (isValid(parsedDate)) {
     return format(parsedDate, 'yyyy-MM-dd');
   } else {
-    console.warn(`Invalid date after parsing: ${dayMonth} with year ${contextYear}. Parsed as: ${parsedDate}`);
     return null;
   }
 }
@@ -65,15 +73,38 @@ function _parseNumbersString(numbersStr: string | null | undefined): number[] {
 }
 
 interface RawApiDraw {
-  apiDrawName: string; // This will store the CANONICAL draw name
+  apiDrawName: string; // Canonical draw name
   date: string; // YYYY-MM-DD
   winningNumbers: number[];
   machineNumbers?: number[];
 }
 
+// Firestore specific document structure (extends RawApiDraw for type safety)
+interface FirestoreDrawDoc extends RawApiDraw {
+  fetchedAt: Timestamp;
+}
+
+const _saveDrawsToFirestore = async (draws: RawApiDraw[]): Promise<void> => {
+  if (!draws.length) return;
+  const batch = writeBatch(db);
+  draws.forEach(draw => {
+    const docId = `${draw.date}_${draw.apiDrawName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_À-ÿ]/g, '')}`;
+    const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
+    const dataToSave = {
+      ...draw,
+      fetchedAt: serverTimestamp() 
+    };
+    batch.set(docRef, dataToSave, { merge: true }); // merge:true to update if exists, or create
+  });
+  try {
+    await batch.commit();
+  } catch (error) {
+    console.error("Error saving draws to Firestore:", error);
+  }
+};
+
 async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]> {
   const url = `${API_BASE_URL}?month=${yearMonth}`;
-  // console.log(`Fetching real data from: ${url}`);
   try {
     const response = await fetch(url, { headers: API_HEADERS });
     if (!response.ok) {
@@ -82,7 +113,6 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
     const data = await response.json();
 
     if (!data.success || !data.drawsResultsWeekly) {
-      // console.warn(`API response not successful or missing drawsResultsWeekly for ${yearMonth}:`, data);
       return [];
     }
     
@@ -93,7 +123,6 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
       contextYear = parseInt(yearMatch[1], 10);
     } else {
       contextYear = parseInt(yearMonth.split('-')[0], 10);
-      // console.warn(`Could not parse year from API's currentMonth field "${currentMonthStrApi}". Using year from request: ${contextYear}`);
     }
 
     const parsedResults: RawApiDraw[] = [];
@@ -103,7 +132,6 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
         const apiDateStr = dailyResult.date; 
         const parsedDate = _parseApiDate(apiDateStr, contextYear);
         if (!parsedDate) {
-          // console.warn(`Skipping entry due to unparsable date: ${apiDateStr} for year ${contextYear}`);
           continue;
         }
 
@@ -112,22 +140,17 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
             const apiDrawNameFromPayload = draw.drawName;
 
             if (!apiDrawNameFromPayload || typeof apiDrawNameFromPayload !== 'string') {
-              // console.warn(`Skipping draw with invalid name from payload: ${apiDrawNameFromPayload}`);
               continue;
             }
             
-            // Normalize the name from API payload (accent-insensitive, lowercase, trim)
             const normalizedApiNameToLookup = apiDrawNameFromPayload.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-            
             const resolvedCanonicalName = canonicalDrawNameMap.get(normalizedApiNameToLookup);
 
             if (!resolvedCanonicalName) {
-              // console.log(`Skipping unknown or unmapped draw name from API: '${apiDrawNameFromPayload}' (normalized: '${normalizedApiNameToLookup}')`);
               continue;
             }
             
             if (draw.winningNumbers && typeof draw.winningNumbers === 'string' && draw.winningNumbers.startsWith('.')) {
-              // console.log(`Skipping draw '${resolvedCanonicalName}' on date '${parsedDate}' due to winningNumbers starting with '.'`);
               continue;
             }
 
@@ -136,101 +159,154 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<RawApiDraw[]>
 
             if (winningNumbers.length === 5) {
               parsedResults.push({
-                apiDrawName: resolvedCanonicalName, // Use the resolved canonical name
+                apiDrawName: resolvedCanonicalName,
                 date: parsedDate, 
                 winningNumbers: winningNumbers,
                 machineNumbers: machineNumbers.length === 5 ? machineNumbers : undefined,
               });
             }
-            // else {
-            //   console.warn(`Skipping draw '${resolvedCanonicalName}' on date '${parsedDate}' due to incomplete winning numbers: ${winningNumbers.length} found.`);
-            // }
           }
         }
       }
     }
+    if (parsedResults.length > 0) {
+      await _saveDrawsToFirestore(parsedResults);
+    }
     return parsedResults;
   } catch (error) {
-    console.error(`Error fetching or parsing data for ${yearMonth}:`, error);
+    console.error(`Error fetching or parsing data for ${yearMonth} from API:`, error);
     return []; 
   }
 }
 
 export const fetchDrawData = async (drawSlug: string): Promise<DrawResult> => {
-  const apiDrawName = _getApiDrawNameFromSlug(drawSlug); // This is the canonical name
-  if (!apiDrawName) {
+  const canonicalDrawName = _getApiDrawNameFromSlug(drawSlug);
+  if (!canonicalDrawName) {
     throw new Error(`Unknown draw slug: ${drawSlug}`);
   }
-  // console.log(`Fetching latest draw data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName})`);
 
-  let attempts = 0;
-  let currentDateIter = new Date();
-
-  while (attempts < 2) { 
-    const yearMonth = format(currentDateIter, 'yyyy-MM');
-    const monthData = await _fetchAndParseMonthData(yearMonth); // monthData now contains canonical apiDrawName
-    
-    const relevantDraws = monthData
-      .filter(d => d.apiDrawName === apiDrawName) // Direct comparison with canonical name
-      .sort((a, b) => b.date.localeCompare(a.date)); 
-
-    if (relevantDraws.length > 0) {
-      const latestDraw = relevantDraws[0];
-      const drawDateObject = dateFnsParse(latestDraw.date, 'yyyy-MM-dd', new Date());
+  // 1. Try to fetch from Firestore
+  try {
+    const q = query(
+      collection(db, RESULTS_COLLECTION_NAME), 
+      where("apiDrawName", "==", canonicalDrawName), 
+      orderBy("date", "desc"), 
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const firestoreDoc = querySnapshot.docs[0].data() as FirestoreDrawDoc;
+      const drawDateObject = dateFnsParse(firestoreDoc.date, 'yyyy-MM-dd', new Date());
       return {
         date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
-        winningNumbers: latestDraw.winningNumbers,
-        machineNumbers: latestDraw.machineNumbers,
+        winningNumbers: firestoreDoc.winningNumbers,
+        machineNumbers: firestoreDoc.machineNumbers,
       };
     }
-    
+  } catch (error) {
+    console.error("Error fetching latest draw from Firestore:", error);
+    // Proceed to API fetch
+  }
+
+  // 2. If not in Firestore, fetch from API (current month, then previous) and save
+  let attempts = 0;
+  let currentDateIter = new Date();
+  let fetchedFromApiAndSaved = false;
+
+  while (attempts < 2) {
+    const yearMonth = format(currentDateIter, 'yyyy-MM');
+    await _fetchAndParseMonthData(yearMonth); // This will save to Firestore
+    fetchedFromApiAndSaved = true; // Mark that we've attempted API fetch and save
     currentDateIter = subMonths(currentDateIter, 1);
     attempts++;
   }
 
-  throw new Error(`No data found for draw ${apiDrawName} (slug: ${drawSlug}) after checking 2 months.`);
+  // 3. After API fetch & save, try Firestore again
+  if (fetchedFromApiAndSaved) {
+    try {
+      const q = query(
+        collection(db, RESULTS_COLLECTION_NAME), 
+        where("apiDrawName", "==", canonicalDrawName), 
+        orderBy("date", "desc"), 
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const firestoreDoc = querySnapshot.docs[0].data() as FirestoreDrawDoc;
+        const drawDateObject = dateFnsParse(firestoreDoc.date, 'yyyy-MM-dd', new Date());
+        return {
+          date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
+          winningNumbers: firestoreDoc.winningNumbers,
+          machineNumbers: firestoreDoc.machineNumbers,
+        };
+      }
+    } catch (error) {
+      console.error("Error fetching latest draw from Firestore after API sync:", error);
+    }
+  }
+  
+  throw new Error(`No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API.`);
 };
 
 export const fetchHistoricalData = async (drawSlug: string, count: number = 20): Promise<HistoricalDataEntry[]> => {
-  const apiDrawName = _getApiDrawNameFromSlug(drawSlug); // Canonical name
-  if (!apiDrawName) {
-    console.error(`No API draw name found for slug: ${drawSlug}`);
+  const canonicalDrawName = _getApiDrawNameFromSlug(drawSlug);
+  if (!canonicalDrawName) {
     return [];
   }
-  // console.log(`Fetching historical data for slug: ${drawSlug} (Canonical API Name: ${apiDrawName}), count: ${count}`);
 
-  const allParsedEntries: RawApiDraw[] = [];
-  let currentDateIter = new Date();
-  const maxMonthsToFetch = 12; 
-
-  for (let i = 0; i < maxMonthsToFetch; i++) {
-    const yearMonth = format(currentDateIter, 'yyyy-MM');
-    const monthData = await _fetchAndParseMonthData(yearMonth); // monthData has canonical names
-    
-    const relevantDrawsInMonth = monthData.filter(d => d.apiDrawName === apiDrawName);
-    allParsedEntries.push(...relevantDrawsInMonth);
-
-    const uniqueEntriesForTargetDraw = Array.from(new Map(
-        allParsedEntries
-            .filter(entry => entry.apiDrawName === apiDrawName) 
-            .map(entry => [`${entry.date}-${entry.apiDrawName}`, entry]) 
-        ).values()
+  let firestoreResults: FirestoreDrawDoc[] = [];
+  try {
+    const q = query(
+      collection(db, RESULTS_COLLECTION_NAME),
+      where("apiDrawName", "==", canonicalDrawName),
+      orderBy("date", "desc"),
+      limit(count)
     );
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach(doc => {
+      firestoreResults.push(doc.data() as FirestoreDrawDoc);
+    });
+  } catch (error) {
+    console.error(`Error fetching historical data for ${canonicalDrawName} from Firestore:`, error);
+  }
 
+  if (firestoreResults.length < count) {
+    // Need to fetch more from API
+    let monthsToFetch = 0;
+    // Heuristic: assume ~20 draws per month for a specific type. If we need 50 and have 10, we need 40 more, so maybe 2-3 months.
+    // Max 12 months to avoid excessive calls in one go.
+    const needed = count - firestoreResults.length;
+    monthsToFetch = Math.min(12, Math.max(1, Math.ceil(needed / (DRAW_SCHEDULE.length * 4 * 0.25) ))); // Rough estimate
 
-    if (uniqueEntriesForTargetDraw.length >= count && i > 0) { 
-      break; 
+    let dateToFetch = firestoreResults.length > 0 
+        ? subMonths(dateFnsParse(firestoreResults[firestoreResults.length - 1].date, 'yyyy-MM-dd', new Date()),1)
+        : new Date();
+
+    for (let i = 0; i < monthsToFetch; i++) {
+      const yearMonth = format(dateToFetch, 'yyyy-MM');
+      await _fetchAndParseMonthData(yearMonth); // Fetches API and saves to Firestore
+      dateToFetch = subMonths(dateToFetch, 1);
     }
-    currentDateIter = subMonths(currentDateIter, 1);
+
+    // Re-query Firestore to get the consolidated & sorted list
+    try {
+      const q = query(
+        collection(db, RESULTS_COLLECTION_NAME),
+        where("apiDrawName", "==", canonicalDrawName),
+        orderBy("date", "desc"),
+        limit(count)
+      );
+      const querySnapshot = await getDocs(q);
+      firestoreResults = []; // Reset and fill with new query result
+      querySnapshot.forEach(doc => {
+        firestoreResults.push(doc.data() as FirestoreDrawDoc);
+      });
+    } catch (error) {
+      console.error(`Error re-fetching historical data for ${canonicalDrawName} from Firestore after API sync:`, error);
+    }
   }
   
-  let finalEntries = allParsedEntries
-    .filter(entry => entry.apiDrawName === apiDrawName) 
-    .sort((a, b) => b.date.localeCompare(a.date)); 
-  
-  finalEntries = Array.from(new Map(finalEntries.map(entry => [`${entry.date}-${entry.apiDrawName}`, entry])).values());
-
-  return finalEntries.slice(0, count).map(entry => {
+  return firestoreResults.slice(0, count).map(entry => {
     const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
     return {
       drawName: drawSlug, 
@@ -241,12 +317,11 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
   });
 };
 
+
 export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDataEntry[]): Promise<NumberFrequency[]> => {
-  // console.log(`Calculating number frequency for ${drawSlug}...`);
   const historicalData = data || await fetchHistoricalData(drawSlug, 50); 
   
   if (historicalData.length === 0) {
-    // console.warn(`No historical data for ${drawSlug} to calculate frequency.`);
     return [];
   }
 
@@ -269,11 +344,9 @@ export const fetchNumberFrequency = async (drawSlug: string, data?: HistoricalDa
 };
 
 export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: number, data?: HistoricalDataEntry[]): Promise<NumberCoOccurrence> => {
-  // console.log(`Calculating co-occurrence for number ${selectedNumber} in ${drawSlug}...`);
   const historicalData = data || await fetchHistoricalData(drawSlug, 50);
 
   if (historicalData.length === 0) {
-    // console.warn(`No historical data for ${drawSlug} to calculate co-occurrence.`);
     return { selectedNumber, coOccurrences: [] };
   }
 
@@ -301,4 +374,3 @@ export const fetchNumberCoOccurrence = async (drawSlug: string, selectedNumber: 
 
   return { selectedNumber, coOccurrences };
 };
-
