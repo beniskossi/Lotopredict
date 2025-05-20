@@ -1,17 +1,16 @@
 
 "use client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Database, FileUp, FileDown, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
 
 export default function AdminDashboardPage() {
-  const { currentUser } = useAuth(); // currentUser might be null initially until auth state is loaded
+  const { currentUser } = useAuth(); 
 
   if (!currentUser) {
-     // This should ideally be handled by AdminAuthGuard, but as a fallback:
     return (
       <div className="space-y-6 text-center">
         <h1 className="text-2xl font-bold text-primary">Accès non autorisé</h1>
@@ -36,18 +35,21 @@ export default function AdminDashboardPage() {
           </CardTitle>
           <CardDescription>
             Les résultats des tirages récupérés par API depuis <code>https://lotobonheur.ci/resultats</code> sont sauvegardés dans une base de données Firebase Firestore.
+            Cette section affichera les derniers résultats et permettra à terme une gestion complète (CRUD).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert variant="default" className="border-primary/50">
+           <h3 className="text-lg font-semibold text-foreground">Résultats Récents Sauvegardés</h3>
+           <RecentDrawResultsTable />
+          <Alert variant="default" className="border-primary/50 mt-6">
             <ShieldAlert className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Développement Futur : Interface CRUD</AlertTitle>
             <AlertDescription>
-              Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue. Pour l'instant, les données sont automatiquement ajoutées par le système de récupération.
+              Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue.
             </AlertDescription>
           </Alert>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FeatureTile icon={<ListChecks />} title="Visualiser les Données" description="Consulter les résultats stockés." disabled />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+            {/* <FeatureTile icon={<ListChecks />} title="Visualiser les Données" description="Consulter les résultats stockés." disabled /> */}
             <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." disabled />
             <FeatureTile icon={<Edit3 />} title="Modifier un Résultat" description="Options pour éditer des résultats existants." disabled />
             <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Options pour supprimer des résultats (avec confirmation)." disabled />
@@ -110,3 +112,4 @@ function FeatureTile({ icon, title, description, disabled }: FeatureTileProps) {
     </div>
   );
 }
+
