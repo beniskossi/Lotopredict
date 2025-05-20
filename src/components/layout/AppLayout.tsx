@@ -36,7 +36,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
-          <div className="hidden md:block">
+          {/* Ensure trigger is available on mobile to open the Sheet, and on desktop to toggle sidebar state */}
+          <div>
             <SidebarTrigger />
           </div>
           <nav className="flex-1">
