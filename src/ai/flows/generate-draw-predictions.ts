@@ -30,7 +30,7 @@ const GenerateDrawPredictionsOutputSchema = z.object({
     .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies.'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...").'),
   confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data.'),
   confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence.'),
 });
