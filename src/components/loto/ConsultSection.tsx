@@ -13,10 +13,27 @@ import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
 import { LotoBall } from './LotoBall';
 import { Search, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from '@/lib/utils';
 
 interface ConsultSectionProps {
   drawSlug: string;
 }
+
+// Helper function to determine background intensity for heatmap-like effect
+const getCountCellStyle = (count: number, maxCount: number): React.CSSProperties => {
+  if (maxCount === 0) return {};
+  const intensity = Math.min(1, Math.max(0.1, count / maxCount)); // Ensure intensity is between 0.1 and 1
+  // Using HSL for --accent color and varying lightness or alpha
+  // Assuming --accent: H S L;
+  // For demonstration, let's use a fixed base color (e.g., primary or accent) and vary opacity.
+  // This will need to be adjusted based on your actual theme.
+  // Using accent color with varying alpha
+  const accentHsl = "var(--accent)"; // e.g. "39 100% 50%"
+  return {
+    backgroundColor: `hsla(${accentHsl}, ${intensity * 0.7 + 0.1})`, // alpha from 0.1 to 0.8
+  };
+};
+
 
 export function ConsultSection({ drawSlug }: ConsultSectionProps) {
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
@@ -30,7 +47,7 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
     const loadHistorical = async () => {
       setIsLoading(true);
       try {
-        const hData = await fetchHistoricalData(drawSlug, 50); // Fetch 50 past draws
+        const hData = await fetchHistoricalData(drawSlug, 50); 
         setHistoricalData(hData);
       } catch (err) {
         setError("Erreur lors du chargement des données historiques.");
@@ -69,6 +86,7 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
   }, [drawSlug, inputValue, historicalData]);
 
   const drawName = getDrawNameBySlug(drawSlug);
+  const maxCoOccurrenceCount = coOccurrenceData?.coOccurrences.reduce((max, item) => Math.max(max, item.count), 0) || 0;
 
   return (
     <TooltipProvider>
@@ -86,6 +104,7 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
                 <p className="text-sm">
                   La section "Co-occurrences" montre à quelle fréquence le numéro que vous avez recherché est apparu
                   avec d'autres numéros spécifiques lors des tirages précédents pour ce même type de jeu.
+                  Les cellules de comptage sont colorées pour un effet de type heatmap : plus la couleur est intense, plus la co-occurrence est fréquente.
                   Cela peut aider à identifier des paires ou groupes de numéros qui sortent souvent ensemble.
                 </p>
               </TooltipContent>
@@ -126,22 +145,29 @@ export function ConsultSection({ drawSlug }: ConsultSectionProps) {
                 Co-occurrences pour le numéro <LotoBall number={selectedNumber} size="sm" /> (Top 10)
               </h3>
               {coOccurrenceData.coOccurrences.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[80px]">Numéro</TableHead>
-                      <TableHead>Nombre d'apparitions communes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {coOccurrenceData.coOccurrences.map(item => (
-                      <TableRow key={item.number}>
-                        <TableCell><LotoBall number={item.number} size="sm" /></TableCell>
-                        <TableCell>{item.count}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[80px]">Numéro</TableHead>
+                        <TableHead>Nombre d'apparitions communes</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {coOccurrenceData.coOccurrences.map(item => (
+                        <TableRow key={item.number}>
+                          <TableCell><LotoBall number={item.number} size="sm" /></TableCell>
+                          <TableCell 
+                            style={getCountCellStyle(item.count, maxCoOccurrenceCount)}
+                            className="transition-colors duration-300"
+                          >
+                            {item.count}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
                 <p>Aucune co-occurrence significative trouvée pour le numéro {selectedNumber} dans les données analysées.</p>
               )}
