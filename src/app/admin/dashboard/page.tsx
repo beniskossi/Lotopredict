@@ -139,7 +139,12 @@ export default function AdminDashboardPage() {
           </Alert>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
             <Link href="/admin/results/add" passHref>
-              <FeatureTile icon={<PlusCircle />} title="Ajouter un Résultat" description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." />
+              <FeatureTile 
+                icon={<PlusCircle />} 
+                title="Ajouter un Résultat" 
+                description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." 
+                onClick={() => {}} // Dummy onClick for styling when used with Link
+              />
             </Link>
             <FeatureTile 
               icon={<Edit3 />} 
@@ -147,7 +152,7 @@ export default function AdminDashboardPage() {
               description="Options pour éditer des résultats existants." 
               onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "La modification des résultats sera bientôt disponible."})} 
             />
-            <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." />
+            <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." onClick={() => {}} />
           </div>
         </CardContent>
       </Card>
@@ -167,7 +172,8 @@ export default function AdminDashboardPage() {
             <FeatureTile 
               icon={<FileUp />} 
               title="Importer des Données" 
-              description="Importer des résultats depuis un fichier (CSV, JSON)." 
+              description="Importer des résultats depuis un fichier (CSV, JSON)."
+              onClick={() => {}} // Dummy onClick for styling when used with Link
             />
           </Link>
           <FeatureTile 
@@ -233,10 +239,12 @@ function FeatureTile({ icon, title, description, onClick }: FeatureTileProps) {
     </>
   );
 
+  // If it's not meant to be clickable (no onClick passed), render a simple div
   if (!onClick) {
     return <div className={tileClasses}>{content}</div>;
   }
 
+  // If it's clickable, make it a div with button role and event handlers
   return (
     <div className={tileClasses} onClick={onClick} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
