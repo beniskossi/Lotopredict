@@ -30,7 +30,7 @@ const GenerateDrawPredictionsOutputSchema = z.object({
     .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...").'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows, mean gaps between appearances, and frequent co-occurrences informed the prediction.'),
   confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data.'),
   confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence.'),
 });
@@ -61,12 +61,18 @@ Perform an in-depth analysis considering:
 - Number Pairings and Clusters: Common groups of numbers appearing together.
 - Skip Patterns: Numbers that tend to skip a certain number of draws before reappearing.
 - Temporal Trends: Evolution of number frequencies or patterns over time.
+- Derived Features: Explicitly consider and mention in your reasoning how features like:
+    - Relative frequency of numbers over a sliding time window.
+    - Mean or median gaps between appearances of specific numbers.
+    - Frequent co-occurrences of numbers within the same draw.
 - Positional Analysis: (If applicable and data allows) Consider if numbers appear more frequently in specific winning positions.
 - Machine Numbers Influence: (If machine numbers are provided in historical data) Analyze any correlation or influence of machine numbers on winning numbers for subsequent draws.
 
+Strive for robust and generalizable patterns, avoiding over-fitting to very recent or sparse data unless specified by user weighting. Your analysis should reflect the depth expected from models optimized via techniques like hyperparameter tuning and temporal cross-validation.
+
 Based on this comprehensive, multi-faceted analysis, provide:
 1.  predictions: An array of 5 distinct predicted numbers, each between 1 and 90.
-2.  reasoning: A detailed, professional explanation of the methodology. Articulate the specific patterns, statistical insights, and simulated model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...") that led to your selection of each predicted number.
+2.  reasoning: A detailed, professional explanation of the methodology. Articulate the specific patterns, statistical insights, and simulated model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...", "Analysis of derived features like mean skip values points to...") that led to your selection of each predicted number.
 3.  confidenceScore: A qualitative confidence score for these predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5).
 4.  confidenceReasoning: Briefly explain why this confidence level was assigned, considering data quality, pattern clarity, and historical predictability.
 
