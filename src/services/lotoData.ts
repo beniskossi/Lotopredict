@@ -284,8 +284,8 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     throw new Error(`Unknown draw slug: ${drawSlug}`);
   }
 
-  const fetchLimit = 3; // Fetch 3 most recent results
-  let results: DrawResult[] = [];
+  const fetchLimit = 3;
+  let firestoreDocs: FirestoreDrawDoc[] = [];
 
   try {
     const q = query(
@@ -296,30 +296,39 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => {
-        const firestoreDoc = doc.data() as FirestoreDrawDoc;
-        const drawDateObject = dateFnsParse(firestoreDoc.date, 'yyyy-MM-dd', new Date());
-        results.push({
-            date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
-            winningNumbers: firestoreDoc.winningNumbers,
-            machineNumbers: firestoreDoc.machineNumbers && firestoreDoc.machineNumbers.length > 0 ? firestoreDoc.machineNumbers : undefined,
-        });
+        firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
     });
 
-    if (results.length >= fetchLimit) {
-      return results; 
+    if (firestoreDocs.length >= fetchLimit) {
+      // Deduplicate and format
+      const uniqueDocsMap = new Map<string, FirestoreDrawDoc>();
+      firestoreDocs.forEach(doc => {
+        if (doc.docId && !uniqueDocsMap.has(doc.docId)) {
+          uniqueDocsMap.set(doc.docId, doc);
+        }
+      });
+      return Array.from(uniqueDocsMap.values())
+        .sort((a, b) => b.date.localeCompare(a.date)) // Re-sort as Map order might not be guaranteed
+        .slice(0, fetchLimit)
+        .map(doc => {
+          const drawDateObject = dateFnsParse(doc.date, 'yyyy-MM-dd', new Date());
+          return {
+            date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
+            winningNumbers: doc.winningNumbers,
+            machineNumbers: doc.machineNumbers && doc.machineNumbers.length > 0 ? doc.machineNumbers : undefined,
+          };
+        });
     }
   } catch (error) {
     console.error(`Error fetching latest draws for ${canonicalDrawName} (slug: ${drawSlug}) from Firestore:`, error);
   }
 
-  // If not enough results from Firestore, try fetching from API
   let attempts = 0;
-  const MAX_API_ATTEMPTS = 3; // Check current month and two previous months
+  const MAX_API_ATTEMPTS = 3; 
   let currentDateIter = new Date();
   let fetchedFromApiAndSaved = false;
 
-
-  while (attempts < MAX_API_ATTEMPTS && results.length < fetchLimit) {
+  while (attempts < MAX_API_ATTEMPTS && firestoreDocs.length < fetchLimit) {
     const yearMonth = format(currentDateIter, 'yyyy-MM');
     const monthDataFromApi = await _fetchAndParseMonthData(yearMonth); 
     if (monthDataFromApi.length > 0) {
@@ -329,36 +338,48 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     attempts++;
   }
 
-  // If API was called, re-query Firestore to get the potentially new data
-  if (fetchedFromApiAndSaved || results.length < fetchLimit) {
+  if (fetchedFromApiAndSaved || firestoreDocs.length < fetchLimit) {
     try {
-      results = []; // Reset results to get fresh data from Firestore
+      firestoreDocs = []; 
       const q = query(
         collection(db, RESULTS_COLLECTION_NAME),
         where("apiDrawName", "==", canonicalDrawName),
         orderBy("date", "desc"),
         limit(fetchLimit)
       );
-      const querySnapshot = await getDocs(q);
-      querySnapshot.forEach(doc => {
-        const firestoreDoc = doc.data() as FirestoreDrawDoc;
-        const drawDateObject = dateFnsParse(firestoreDoc.date, 'yyyy-MM-dd', new Date());
-        results.push({
-            date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
-            winningNumbers: firestoreDoc.winningNumbers,
-            machineNumbers: firestoreDoc.machineNumbers && firestoreDoc.machineNumbers.length > 0 ? firestoreDoc.machineNumbers : undefined,
-        });
+      const querySnapshotAfterSync = await getDocs(q);
+      querySnapshotAfterSync.forEach(doc => {
+        firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
       });
     } catch (error) {
       console.error(`Error fetching latest draws for ${canonicalDrawName} (slug: ${drawSlug}) from Firestore after API sync:`, error);
     }
   }
   
-  if (results.length > 0) {
-    return results;
-  }
+  // Final deduplication and mapping
+  const finalUniqueDocsMap = new Map<string, FirestoreDrawDoc>();
+  firestoreDocs.forEach(doc => {
+    if (doc.docId && !finalUniqueDocsMap.has(doc.docId)) {
+      finalUniqueDocsMap.set(doc.docId, doc);
+    }
+  });
 
-  // If still no results, throw an error.
+  const finalResults = Array.from(finalUniqueDocsMap.values())
+    .sort((a, b) => b.date.localeCompare(a.date)) // Re-sort
+    .slice(0, fetchLimit)
+    .map(doc => {
+      const drawDateObject = dateFnsParse(doc.date, 'yyyy-MM-dd', new Date());
+      return {
+        date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
+        winningNumbers: doc.winningNumbers,
+        machineNumbers: doc.machineNumbers && doc.machineNumbers.length > 0 ? doc.machineNumbers : undefined,
+      };
+    });
+
+  if (finalResults.length > 0) {
+    return finalResults;
+  }
+  
   throw new Error(`No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API.`);
 };
 
@@ -384,38 +405,33 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     console.error(`Error fetching historical data for ${canonicalDrawName} from Firestore:`, error);
   }
 
-  // If not enough results from Firestore, try fetching older months from API
   if (firestoreResults.length < count) {
     const needed = count - firestoreResults.length;
-    // Estimate draws per month for this specific draw type to decide how many past months to check
-    // This is a rough estimate; actual number of draws varies.
-    const estimatedDrawsPerMonthOfType = 4; // Assuming roughly one draw per week for a specific type
-    let monthsToFetch = Math.min(12, Math.max(1, Math.ceil(needed / estimatedDrawsPerMonthOfType) + 2 )); // Fetch a bit more to be safe, max 12 months
+    const estimatedDrawsPerMonthOfType = 4; 
+    let monthsToFetch = Math.min(12, Math.max(1, Math.ceil(needed / estimatedDrawsPerMonthOfType) + 2 )); 
 
     let dateToFetch = firestoreResults.length > 0 && firestoreResults[firestoreResults.length - 1]?.date
         ? subMonths(dateFnsParse(firestoreResults[firestoreResults.length - 1].date, 'yyyy-MM-dd', new Date()),1)
-        : subMonths(new Date(), 1); // Start from last month if no data, or month before last known data
+        : subMonths(new Date(), 1); 
 
     for (let i = 0; i < monthsToFetch; i++) {
       const yearMonth = format(dateToFetch, 'yyyy-MM');
-      // console.log(`Fetching API data for ${canonicalDrawName}, month: ${yearMonth}`);
-      await _fetchAndParseMonthData(yearMonth); // Fetches, de-duplicates for the month, and saves all draws for that month
+      await _fetchAndParseMonthData(yearMonth); 
       dateToFetch = subMonths(dateToFetch, 1);
-        if (i > 0 && i % 3 === 0) { // Small delay to avoid rapid-fire API calls if fetching many months
+        if (i > 0 && i % 3 === 0) { 
             await new Promise(resolve => setTimeout(resolve, 500)); 
         }
     }
 
-    // After API sync, re-query Firestore to get the updated set of historical data
     try {
       const q = query(
         collection(db, RESULTS_COLLECTION_NAME),
         where("apiDrawName", "==", canonicalDrawName),
         orderBy("date", "desc"),
-        limit(count) // Still limit to the originally requested count
+        limit(count) 
       );
       const querySnapshotAfterSync = await getDocs(q); 
-      firestoreResults = []; // Reset to ensure we only have data from this fresh query
+      firestoreResults = []; 
       querySnapshotAfterSync.forEach(doc => { 
         firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc);
       });
@@ -424,21 +440,16 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
     }
   }
 
-  // Final deduplication of results obtained from Firestore
-  // This ensures that if any subtle inconsistencies led to multiple Firestore docs for the same logical draw, they are handled.
   const uniqueDrawsMap = new Map<string, FirestoreDrawDoc>();
   firestoreResults.forEach(result => {
-    const keyDate = result.date.trim(); // Date should be YYYY-MM-DD
-    const keyName = result.apiDrawName.trim().toLowerCase(); // Normalize name for key
-    const uniqueKey = `${keyDate}_${keyName}`;
-    if (!uniqueDrawsMap.has(uniqueKey)) {
-      uniqueDrawsMap.set(uniqueKey, result);
+    const docId = result.docId;
+    if (docId && !uniqueDrawsMap.has(docId)) {
+      uniqueDrawsMap.set(docId, result);
     }
   });
-
-  // Sort again because Map iteration order is based on insertion order.
+  
   const trulyUniqueFirestoreResults = Array.from(uniqueDrawsMap.values())
-                                      .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date desc
+                                      .sort((a, b) => b.date.localeCompare(a.date)); 
 
   return trulyUniqueFirestoreResults.slice(0, count).map(entry => {
     const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
@@ -556,7 +567,8 @@ export const deleteLottoResult = async (docId: string): Promise<void> => {
   try {
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
     await deleteDoc(docRef);
-  } catch (error) {
+  } catch (error)
+{
     console.error(`Error deleting lotto result with ID ${docId} from Firestore:`, error);
     throw error; 
   }
