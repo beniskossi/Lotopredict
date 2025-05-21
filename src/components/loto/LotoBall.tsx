@@ -1,3 +1,5 @@
+
+import React from 'react'; // Import React for React.memo
 import { getBallColor } from '@/lib/lotoUtils';
 import { cn } from '@/lib/utils';
 
@@ -6,7 +8,8 @@ interface LotoBallProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-export function LotoBall({ number, size = 'md' }: LotoBallProps) {
+// Wrap LotoBall with React.memo
+export const LotoBall = React.memo(function LotoBall({ number, size = 'md' }: LotoBallProps) {
   const colorClasses = getBallColor(number);
   
   const sizeClasses = {
@@ -27,4 +30,4 @@ export function LotoBall({ number, size = 'md' }: LotoBallProps) {
       {number}
     </div>
   );
-}
+});

@@ -5,7 +5,7 @@ import type { Timestamp } from 'firebase/firestore';
 export interface Draw {
   name: string;
   time: string;
-  slug: string; 
+  slug: string;
   icon?: LucideIcon;
 }
 
@@ -16,6 +16,7 @@ export interface DaySchedule {
 }
 
 export interface DrawResult {
+  docId?: string; // Added for stable keys
   date: string; // Display format, e.g., "25 juil. 2024"
   winningNumbers: number[];
   machineNumbers?: number[];
@@ -40,7 +41,7 @@ export interface NumberCoOccurrence {
 
 // For Firestore storage
 export interface FirestoreDrawDoc {
-  docId?: string; 
+  docId?: string;
   apiDrawName: string; // Canonical draw name used by the API/system
   date: string; // YYYY-MM-DD format for storage and sorting
   winningNumbers: number[];

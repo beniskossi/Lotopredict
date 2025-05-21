@@ -49,7 +49,7 @@ export function DataSection({ drawSlug }: DataSectionProps) {
         <div className="flex justify-between items-center">
           <div>
             <CardTitle className="text-2xl text-primary">Derniers Résultats du Tirage</CardTitle>
-            <CardDescription>{drawName}</CardDescription>
+            <CardDescription>{drawName} - Affichage des 3 résultats les plus récents.</CardDescription>
           </div>
           <Button onClick={loadData} disabled={isLoading} variant="outline" size="icon" aria-label="Rafraîchir les données">
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
@@ -83,19 +83,19 @@ export function DataSection({ drawSlug }: DataSectionProps) {
           <>
             <div className="space-y-8">
               {data.map((draw, index) => (
-                <div key={`${draw.date}-${index}`} className="space-y-4 p-4 border-b border-border last:border-b-0 rounded-md shadow-sm bg-card/50">
+                <div key={draw.docId || `${draw.date}-${index}`} className="space-y-4 p-4 border-b border-border last:border-b-0 rounded-md shadow-sm bg-card/50">
                   <p className="text-lg font-semibold text-primary">{draw.date}</p>
                   <div>
                     <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Gagnants</h3>
                     <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
-                      {draw.winningNumbers.map(num => <LotoBall key={`win-${num}-${draw.date}`} number={num} />)}
+                      {draw.winningNumbers.map(num => <LotoBall key={`win-${num}-${draw.docId || draw.date}`} number={num} />)}
                     </div>
                   </div>
                   {draw.machineNumbers && draw.machineNumbers.length > 0 && (
                     <div>
                       <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Machine</h3>
                       <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
-                        {draw.machineNumbers.map(num => <LotoBall key={`mac-${num}-${draw.date}`} number={num} />)}
+                        {draw.machineNumbers.map(num => <LotoBall key={`mac-${num}-${draw.docId || draw.date}`} number={num} />)}
                       </div>
                     </div>
                   )}
