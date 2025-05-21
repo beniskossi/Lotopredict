@@ -28,10 +28,10 @@ export default function HomePage() {
             )}
           </div>
           <div className="relative h-64 md:h-full min-h-[300px]">
-            <Image 
-              src="https://placehold.co/800x600.png?bg=222222&fc=FFD700" 
-              alt="image des boules de loterie" 
-              layout="fill" 
+            <Image
+              src="https://placehold.co/800x600.png"
+              alt="Boules de tirage de loterie"
+              layout="fill"
               objectFit="cover"
               data-ai-hint="lottery balls"
               priority
