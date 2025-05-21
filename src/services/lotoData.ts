@@ -146,13 +146,14 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
       machineNumbers: draw.machineNumbers || [], 
     };
 
-    if (currentUser) {
-      batch.set(docRef, dataToSave, { merge: true });
-    } else {
+    if (currentUser) { // Admin or authenticated context
+      batch.set(docRef, dataToSave, { merge: true }); // Allow overwrite/update
+    } else { // Unauthenticated client-side scraping
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
+      if (!docSnap.exists()) { // Only create if it doesn't exist
         batch.set(docRef, dataToSave); 
       }
+      // If it exists, do nothing to prevent unauthenticated update errors
     }
   }
 
@@ -186,17 +187,14 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<Firestor
     }
 
     let contextYear: number;
-    const currentMonthStrApi = data.currentMonth; 
-    const yearMatch = currentMonthStrApi?.match(/\b(\d{4})\b/);
-    if (yearMatch && yearMatch[1]) {
-      contextYear = parseInt(yearMatch[1], 10);
+    // Derive contextYear strictly from the yearMonth parameter of the function
+    const yearFromParam = parseInt(yearMonth.split('-')[0], 10);
+    if (!isNaN(yearFromParam)) {
+        contextYear = yearFromParam;
     } else {
-      // Fallback to year from yearMonth string if API doesn't provide currentMonth or year
-      contextYear = parseInt(yearMonth.split('-')[0], 10);
-      if (isNaN(contextYear)) {
-        // console.warn(`Could not determine context year for ${yearMonth}. Using current year as last resort.`);
-        contextYear = getYear(new Date()); // Last resort
-      }
+        // This case should ideally not happen if yearMonth is always "YYYY-MM"
+        console.warn(`Could not parse year from yearMonth parameter: ${yearMonth}. Using current system year as a fallback.`);
+        contextYear = getYear(new Date());
     }
 
 
@@ -324,18 +322,22 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
   }
 
   let attempts = 0;
-  const MAX_API_ATTEMPTS = 3; 
+  const MONTHS_TO_CHECK_API = 3; // Current month + 2 previous months
   let currentDateIter = new Date();
   let fetchedFromApiAndSaved = false;
 
-  while (attempts < MAX_API_ATTEMPTS && firestoreDocs.length < fetchLimit) {
-    const yearMonth = format(currentDateIter, 'yyyy-MM');
-    const monthDataFromApi = await _fetchAndParseMonthData(yearMonth); 
-    if (monthDataFromApi.length > 0) {
-        fetchedFromApiAndSaved = true;
+  // Try to fetch from API if Firestore has less than fetchLimit results
+  // Only try API if firestoreDocs.length < fetchLimit
+  if (firestoreDocs.length < fetchLimit) {
+    while (attempts < MONTHS_TO_CHECK_API) {
+      const yearMonth = format(currentDateIter, 'yyyy-MM');
+      const monthDataFromApi = await _fetchAndParseMonthData(yearMonth); 
+      if (monthDataFromApi.length > 0) {
+          fetchedFromApiAndSaved = true;
+      }
+      currentDateIter = subMonths(currentDateIter, 1);
+      attempts++;
     }
-    currentDateIter = subMonths(currentDateIter, 1);
-    attempts++;
   }
 
   if (fetchedFromApiAndSaved || firestoreDocs.length < fetchLimit) {
@@ -359,8 +361,18 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
   // Final deduplication and mapping
   const finalUniqueDocsMap = new Map<string, FirestoreDrawDoc>();
   firestoreDocs.forEach(doc => {
-    if (doc.docId && !finalUniqueDocsMap.has(doc.docId)) {
-      finalUniqueDocsMap.set(doc.docId, doc);
+    // Ensure doc.docId exists and is a string before using it as a map key
+    if (doc.docId && typeof doc.docId === 'string') {
+      if (!finalUniqueDocsMap.has(doc.docId)) {
+        finalUniqueDocsMap.set(doc.docId, doc);
+      }
+    } else {
+      // Handle cases where docId might be missing or not a string, perhaps by logging or creating a fallback key
+      // For now, we'll just ensure a key exists if constructing one is possible, otherwise log and skip.
+      const fallbackKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
+      if (!finalUniqueDocsMap.has(fallbackKey)) {
+          finalUniqueDocsMap.set(fallbackKey, {...doc, docId: fallbackKey}); // Assign the constructed ID
+      }
     }
   });
 
@@ -380,7 +392,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     return finalResults;
   }
   
-  throw new Error(`No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API.`);
+  throw new Error(`No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API for ${MONTHS_TO_CHECK_API} months.`);
 };
 
 export const fetchHistoricalData = async (drawSlug: string, count: number = 20): Promise<HistoricalDataEntry[]> => {
@@ -442,9 +454,9 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
 
   const uniqueDrawsMap = new Map<string, FirestoreDrawDoc>();
   firestoreResults.forEach(result => {
-    const docId = result.docId;
-    if (docId && !uniqueDrawsMap.has(docId)) {
-      uniqueDrawsMap.set(docId, result);
+    const uniqueKey = `${result.date.trim()}_${result.apiDrawName.trim().toLowerCase()}`;
+    if (!uniqueDrawsMap.has(uniqueKey)) {
+      uniqueDrawsMap.set(uniqueKey, result);
     }
   });
   
