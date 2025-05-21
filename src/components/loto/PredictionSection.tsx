@@ -55,10 +55,15 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     setIsLoadingHistory(true);
     setError(null);
     try {
-      let historyCount = 10;
-      if (analysisPeriod === "last_30_draws") historyCount = 30;
-      else if (analysisPeriod === "last_50_draws") historyCount = 50;
-      else if (analysisPeriod === "all_available") historyCount = 100;
+      let historyCount = 10; // Default for "last_10_draws" or if option not found
+      const selectedPeriodOption = analysisPeriodOptions.find(opt => opt.value === analysisPeriod);
+
+      if (selectedPeriodOption) {
+        if (analysisPeriod === "last_30_draws") historyCount = 30;
+        else if (analysisPeriod === "last_50_draws") historyCount = 50;
+        else if (analysisPeriod === "all_available") historyCount = 100;
+        // "last_10_draws" is handled by the default
+      }
       
       const hData: HistoricalDataEntry[] = await fetchHistoricalData(drawSlug, historyCount); 
       const formattedData = formatHistoricalDataForAI(hData);
@@ -155,7 +160,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="analysisPeriod">Période d'Analyse Historique</Label>
-              <Select value={analysisPeriod} onValueChange={setAnalysisPeriod}>
+              <Select value={analysisPeriod} onValueChange={setAnalysisPeriod} disabled={isLoading || isLoadingHistory}>
                 <SelectTrigger id="analysisPeriod" className="w-full">
                   <SelectValue placeholder="Choisir la période..." />
                 </SelectTrigger>
@@ -169,7 +174,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
             </div>
             <div>
               <Label htmlFor="numberWeighting">Pondération des Numéros</Label>
-              <Select value={numberWeighting} onValueChange={setNumberWeighting}>
+              <Select value={numberWeighting} onValueChange={setNumberWeighting} disabled={isLoading || isLoadingHistory}>
                 <SelectTrigger id="numberWeighting" className="w-full">
                   <SelectValue placeholder="Choisir la pondération..." />
                 </SelectTrigger>
@@ -198,6 +203,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
                   rows={5}
                   className="resize-none border-0 shadow-none focus-visible:ring-0"
                   aria-describedby="historicalDataHint"
+                  disabled={isLoading || isLoadingHistory}
                 />
               </ScrollArea>
             )}
