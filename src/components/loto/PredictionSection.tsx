@@ -55,18 +55,21 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     setIsLoadingHistory(true);
     setError(null);
     try {
-      let historyCount = 10; // Default for "last_10_draws" or if option not found
+      let historyCount = 10; 
       const selectedPeriodOption = analysisPeriodOptions.find(opt => opt.value === analysisPeriod);
 
       if (selectedPeriodOption) {
         if (analysisPeriod === "last_30_draws") historyCount = 30;
         else if (analysisPeriod === "last_50_draws") historyCount = 50;
         else if (analysisPeriod === "all_available") historyCount = 100;
-        // "last_10_draws" is handled by the default
       }
       
-      const hData: HistoricalDataEntry[] = await fetchHistoricalData(drawSlug, historyCount); 
-      const formattedData = formatHistoricalDataForAI(hData);
+      const hData: HistoricalDataEntry[] = await fetchHistoricalData(drawSlug, historyCount);
+      // Final deduplication layer before formatting for AI
+      const uniqueHData = Array.from(
+        new Map(hData.map(item => [item.docId || `${item.drawName}-${item.date}`, item])).values()
+      );
+      const formattedData = formatHistoricalDataForAI(uniqueHData);
       setHistoricalDataString(formattedData);
     } catch (err) {
       setError("Erreur lors de la récupération des données historiques pour la prédiction.");

@@ -27,7 +27,11 @@ export function DataSection({ drawSlug }: DataSectionProps) {
     setError(null);
     try {
       const result = await fetchDrawData(drawSlug);
-      setData(result);
+      // Final client-side deduplication before setting state
+      const uniqueResults = Array.from(
+        new Map(result.map(item => [item.docId || `${item.date}`, item])).values()
+      );
+      setData(uniqueResults);
     } catch (err) {
       setError("Erreur lors de la récupération des données.");
       console.error(err);
@@ -49,7 +53,7 @@ export function DataSection({ drawSlug }: DataSectionProps) {
         <div className="flex justify-between items-center">
           <div>
             <CardTitle className="text-2xl text-primary">Derniers Résultats du Tirage</CardTitle>
-            <CardDescription>{drawName} - Affichage des 3 résultats les plus récents.</CardDescription>
+            <CardDescription>{drawName} - Affichage des {data ? data.length : 'derniers'} résultats les plus récents.</CardDescription>
           </div>
           <Button onClick={loadData} disabled={isLoading} variant="outline" size="icon" aria-label="Rafraîchir les données">
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
@@ -108,12 +112,12 @@ export function DataSection({ drawSlug }: DataSectionProps) {
               </p>
               <div className="flex justify-center gap-4 mt-2">
                 <Button variant="link" asChild className="text-primary hover:underline">
-                  <Link href={`/draw/${drawSlug}?tab=statistiques`}>
+                  <Link href={`/draw/${drawSlug}?tab=statistiques`} scroll={false}>
                     Statistiques <ExternalLink className="ml-1 h-3 w-3" />
                   </Link>
                 </Button>
                 <Button variant="link" asChild className="text-primary hover:underline">
-                  <Link href={`/draw/${drawSlug}?tab=consulter`}>
+                  <Link href={`/draw/${drawSlug}?tab=consulter`} scroll={false}>
                     Consulter Régularité <ExternalLink className="ml-1 h-3 w-3" />
                   </Link>
                 </Button>
