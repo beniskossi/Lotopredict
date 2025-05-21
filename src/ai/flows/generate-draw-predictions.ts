@@ -11,12 +11,20 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
+// Schema for a single historical entry, to be used in the flow's input
+const HistoricalEntrySchema = z.object({
+  date: z.string().describe("The date of the historical draw, e.g., '20 mai 2025'."),
+  winningNumbers: z.array(z.number()).describe('An array of winning numbers for the historical draw.'),
+  machineNumbers: z.array(z.number()).optional().describe('An optional array of machine numbers for the historical draw.'),
+});
+export type HistoricalEntry = z.infer<typeof HistoricalEntrySchema>;
+
 const GenerateDrawPredictionsInputSchema = z.object({
   drawName: z.string().describe('The name of the lottery draw.'),
   historicalData: z
-    .string()
+    .array(HistoricalEntrySchema)
     .describe(
-      'Historical lottery draw data used to generate predictions. Should be a string containing the draw history.'
+      'An array of historical lottery draw data objects used to generate predictions.'
     ),
   analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data").'),
   numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends").'),
@@ -42,9 +50,22 @@ export async function generateDrawPredictions(
   return generateDrawPredictionsFlow(input);
 }
 
+// Schema for the input that the AI prompt itself expects
+const PromptInputSchema = z.object({
+  drawName: z.string().describe('The name of the lottery draw.'),
+  historicalData: z
+    .string()
+    .describe(
+      'A string representation of historical lottery draw data used to generate predictions.'
+    ),
+  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data").'),
+  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends").'),
+});
+
+
 const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
-  input: {schema: GenerateDrawPredictionsInputSchema},
+  input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
   prompt: `You are a sophisticated lottery analysis system employing advanced neural network techniques (simulating RNN-LSTM for temporal sequences and XGBoost-like feature importance) to provide expert predictions. Your task is to analyze the provided historical data for the specified lottery draw.
 
@@ -84,13 +105,28 @@ Output the results strictly in JSON format, adhering to the output schema. Ensur
 const generateDrawPredictionsFlow = ai.defineFlow(
   {
     name: 'generateDrawPredictionsFlow',
-    inputSchema: GenerateDrawPredictionsInputSchema,
+    inputSchema: GenerateDrawPredictionsInputSchema, // Flow input uses structured historicalData
     outputSchema: GenerateDrawPredictionsOutputSchema,
   },
-  async input => {
-    // Potentially, pre-process or augment 'historicalData' based on 'analysisPeriod' here
-    // For now, the prompt handles the interpretation of these parameters.
-    const {output} = await prompt(input);
+  async (input: GenerateDrawPredictionsInput): Promise<GenerateDrawPredictionsOutput> => {
+    // Format the structured historicalData into a string for the prompt
+    const formattedHistoricalDataString = input.historicalData.map(entry => {
+      let recordString = `Date: ${entry.date}, Gagnants: ${entry.winningNumbers.join(', ')}`;
+      if (entry.machineNumbers && entry.machineNumbers.length > 0) {
+        recordString += `; Machine: ${entry.machineNumbers.join(', ')}`;
+      }
+      return recordString;
+    }).join('\n');
+
+    const promptPayload = {
+      drawName: input.drawName,
+      historicalData: formattedHistoricalDataString, // This is the string for the prompt
+      analysisPeriod: input.analysisPeriod,
+      numberWeighting: input.numberWeighting,
+    };
+    
+    const {output} = await prompt(promptPayload);
     return output!;
   }
 );
+

@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LotoBall } from "./LotoBall";
-import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type GenerateDrawPredictionsInput } from '@/ai/flows/generate-draw-predictions';
+import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type GenerateDrawPredictionsInput, type HistoricalEntry } from '@/ai/flows/generate-draw-predictions';
 import { fetchHistoricalData } from '@/services/lotoData';
 import type { HistoricalDataEntry } from '@/types/loto';
-import { formatHistoricalDataForAI } from '@/lib/lotoUtils';
+// import { formatHistoricalDataForAI } from '@/lib/lotoUtils'; // No longer needed here
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
 import { Wand2, Loader2, HelpCircle, Info } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -40,22 +40,34 @@ const numberWeightingOptions = [
 
 export function PredictionSection({ drawSlug }: PredictionSectionProps) {
   const [predictions, setPredictions] = useState<GenerateDrawPredictionsOutput | null>(null);
-  const [historicalDataString, setHistoricalDataString] = useState<string>('');
+  const [historicalDataForDisplay, setHistoricalDataForDisplay] = useState<string>(''); // For display in Textarea
+  const [rawHistoricalEntries, setRawHistoricalEntries] = useState<HistoricalDataEntry[]>([]); // For passing to AI
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const [analysisPeriod, setAnalysisPeriod] = useState<string>(analysisPeriodOptions[1].value); // Default to last 30 draws
-  const [numberWeighting, setNumberWeighting] = useState<string>(numberWeightingOptions[0].value); // Default to emphasize recent
+  const [analysisPeriod, setAnalysisPeriod] = useState<string>(analysisPeriodOptions[1].value);
+  const [numberWeighting, setNumberWeighting] = useState<string>(numberWeightingOptions[0].value);
 
   const drawNameDisplay = getDrawNameBySlug(drawSlug);
+
+  // Helper to format historical data for display in Textarea
+  const formatHistoricalDataForDisplay = (data: HistoricalDataEntry[]): string => {
+    return data.map(entry => {
+      let recordString = `Date: ${entry.date}, Gagnants: ${entry.winningNumbers.join(', ')}`;
+      if (entry.machineNumbers && entry.machineNumbers.length > 0) {
+        recordString += `; Machine: ${entry.machineNumbers.join(', ')}`;
+      }
+      return recordString;
+    }).join('\n');
+  };
 
   const loadHistoricalData = useCallback(async () => {
     setIsLoadingHistory(true);
     setError(null);
     try {
-      let historyCount = 10; 
+      let historyCount = 10;
       const selectedPeriodOption = analysisPeriodOptions.find(opt => opt.value === analysisPeriod);
 
       if (selectedPeriodOption) {
@@ -65,12 +77,19 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
       }
       
       const hData: HistoricalDataEntry[] = await fetchHistoricalData(drawSlug, historyCount);
-      // Final deduplication layer before formatting for AI
-      const uniqueHData = Array.from(
-        new Map(hData.map(item => [item.docId || `${item.drawName}-${item.date}`, item])).values()
-      );
-      const formattedData = formatHistoricalDataForAI(uniqueHData);
-      setHistoricalDataString(formattedData);
+      
+      // Deduplication before setting state (final client-side safeguard)
+      const uniqueHDataMap = new Map<string, HistoricalDataEntry>();
+      hData.forEach(entry => {
+        const key = entry.docId || `${entry.drawName}-${entry.date}`; // Use docId if available, else fallback
+        if (!uniqueHDataMap.has(key)) {
+          uniqueHDataMap.set(key, entry);
+        }
+      });
+      const uniqueHData = Array.from(uniqueHDataMap.values());
+      
+      setRawHistoricalEntries(uniqueHData);
+      setHistoricalDataForDisplay(formatHistoricalDataForDisplay(uniqueHData));
     } catch (err) {
       setError("Erreur lors de la récupération des données historiques pour la prédiction.");
       console.error(err);
@@ -89,7 +108,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
   }, [loadHistoricalData]);
 
   const handleGeneratePredictions = async () => {
-    if (!historicalDataString.trim() && !isLoadingHistory) {
+    if (rawHistoricalEntries.length === 0 && !isLoadingHistory) {
       toast({
         variant: "destructive",
         title: "Données manquantes",
@@ -110,9 +129,16 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     setPredictions(null);
 
     try {
+      // Map rawHistoricalEntries to the structure expected by the Genkit flow
+      const historicalEntriesForFlow: HistoricalEntry[] = rawHistoricalEntries.map(entry => ({
+        date: entry.date, // This is already in PPP format, e.g., "20 mai 2025"
+        winningNumbers: entry.winningNumbers,
+        machineNumbers: entry.machineNumbers,
+      }));
+
       const input: GenerateDrawPredictionsInput = {
         drawName: drawNameDisplay,
-        historicalData: historicalDataString,
+        historicalData: historicalEntriesForFlow, // Pass the structured array
         analysisPeriod: analysisPeriodOptions.find(opt => opt.value === analysisPeriod)?.label,
         numberWeighting: numberWeightingOptions.find(opt => opt.value === numberWeighting)?.label,
       };
@@ -200,18 +226,18 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
               <ScrollArea className="h-32 w-full rounded-md border p-2">
                 <Textarea
                   id="historicalData"
-                  value={historicalDataString}
-                  onChange={(e) => setHistoricalDataString(e.target.value)}
-                  placeholder="Ex: Gagnants: 1,2,3,4,5; Machine: 6,7,8,9,10"
+                  value={historicalDataForDisplay} // Display the formatted string
+                  readOnly // User should not edit this directly if it's auto-loaded
+                  placeholder="Les données historiques seront chargées ici..."
                   rows={5}
-                  className="resize-none border-0 shadow-none focus-visible:ring-0"
+                  className="resize-none border-0 shadow-none focus-visible:ring-0 bg-muted/30 cursor-default"
                   aria-describedby="historicalDataHint"
                   disabled={isLoading || isLoadingHistory}
                 />
               </ScrollArea>
             )}
             <p id="historicalDataHint" className="text-xs text-muted-foreground mt-1">
-              L'IA utilise ces données. Format: "Gagnants: n1,n2..; Machine: m1,m2..".
+              L'IA utilise ces données. Format attendu par l'IA (généré en interne): "Date: JJ Mois AAAA, Gagnants: n1,n2..; Machine: m1,m2..".
             </p>
           </div>
 
