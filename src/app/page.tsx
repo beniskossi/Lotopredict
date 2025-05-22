@@ -30,10 +30,10 @@ export default function HomePage() {
           <div className="relative h-64 md:h-full min-h-[300px]">
             <Image
               src="https://placehold.co/800x600.png"
-              alt="Boules de tirage de loterie"
+              alt="Quatre boules de loterie colorées épelant le mot LOTO"
               layout="fill"
               objectFit="cover"
-              data-ai-hint="lottery balls"
+              data-ai-hint="LOTO lottery balls"
               priority
             />
              <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-transparent md:bg-gradient-to-t md:from-background md:via-transparent md:to-transparent"></div>
