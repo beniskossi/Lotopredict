@@ -2,10 +2,12 @@
 import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
+export type DrawSlug = string; // Added this type for clarity
+
 export interface Draw {
   name: string;
   time: string;
-  slug: string;
+  slug: DrawSlug;
   icon?: LucideIcon;
 }
 
@@ -16,14 +18,14 @@ export interface DaySchedule {
 }
 
 export interface DrawResult {
-  docId?: string; // Added for stable keys
+  docId?: string; 
   date: string; // Display format, e.g., "25 juil. 2024"
   winningNumbers: number[];
   machineNumbers?: number[];
 }
 
 export interface HistoricalDataEntry extends DrawResult {
-  drawName: string; // This is the drawSlug
+  drawName: DrawSlug; // This is the drawSlug
 }
 
 export interface NumberFrequency {
