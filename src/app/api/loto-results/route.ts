@@ -80,25 +80,42 @@ export async function GET(request: NextRequest) {
 
 
   try {
-    const response = await fetch(externalApiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json',
-        'Referer': 'https://lotobonheur.ci/resultats',
-      },
-      // cache: 'no-store', // Ensure fresh data for API route
-    });
-
-    if (!response.ok) {
-      console.error(`External API error: ${response.status} ${response.statusText} from ${externalApiUrl}`);
-      return NextResponse.json({ error: `Failed to fetch data from external API. Status: ${response.status}` }, { status: response.status });
+    let externalApiResponse;
+    try {
+      externalApiResponse = await fetch(externalApiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://lotobonheur.ci/resultats',
+        },
+        // cache: 'no-store', // Ensure fresh data for API route
+      });
+    } catch (fetchError: any) {
+      console.error(`LotoPredict API Route: External API fetch to ${externalApiUrl} failed directly:`, fetchError);
+      return NextResponse.json({ error: `Failed to connect to the external lottery API: ${externalApiUrl}. Please check network connectivity or if the external service is down.`, details: fetchError.message }, { status: 503 }); // Service Unavailable
     }
 
-    const apiData: ExternalApiResponse = await response.json();
+
+    if (!externalApiResponse.ok) {
+      const errorBody = await externalApiResponse.text();
+      console.error(`LotoPredict API Route: External API error: ${externalApiResponse.status} ${externalApiResponse.statusText} from ${externalApiUrl}. Body: ${errorBody}`);
+      return NextResponse.json({ error: `Failed to fetch data from external API. Status: ${externalApiResponse.status}`, details: errorBody }, { status: externalApiResponse.status });
+    }
+
+    let apiData: ExternalApiResponse;
+    try {
+      apiData = await externalApiResponse.json();
+    } catch (jsonError: any) {
+        console.error(`LotoPredict API Route: Failed to parse JSON response from ${externalApiUrl}:`, jsonError);
+        const textResponse = await externalApiResponse.text(); // Attempt to get text if JSON fails
+        console.error(`LotoPredict API Route: Non-JSON response was: ${textResponse.substring(0, 500)}...`);
+        return NextResponse.json({ error: 'External API returned non-JSON response or malformed JSON.', details: jsonError.message }, { status: 502 }); // Bad Gateway
+    }
+
 
     if (!apiData.success || !apiData.drawsResultsWeekly) {
-      console.error('External API response unsuccessful or missing drawsResultsWeekly:', apiData);
-      return NextResponse.json({ error: 'External API returned unsuccessful or malformed response' }, { status: 502 });
+      console.error('LotoPredict API Route: External API response unsuccessful or missing drawsResultsWeekly:', apiData);
+      return NextResponse.json({ error: 'External API returned unsuccessful or malformed response structure' }, { status: 502 });
     }
 
     const results: ProcessedDrawResult[] = [];
@@ -117,7 +134,7 @@ export async function GET(request: NextRequest) {
           const month = parseInt(monthStr, 10) -1; // month is 0-indexed for Date constructor
 
           if (isNaN(day) || isNaN(month) || month < 0 || month > 11 || day < 1 || day > 31) {
-            console.warn(`Invalid day/month parsed from API date: ${apiDateStr}`);
+            console.warn(`LotoPredict API Route: Invalid day/month parsed from API date: ${apiDateStr}`);
             continue;
           }
           
@@ -125,20 +142,20 @@ export async function GET(request: NextRequest) {
           if (!yearToUse) { // If no month query, infer from current year
             yearToUse = currentActualYear;
             let tempDate = new Date(yearToUse, month, day);
-            if (isDateValid(tempDate) && isFuture(tempDate) && tempDate > new Date()) { // check if it's also greater than today
+            if (isDateValid(tempDate) && isFuture(tempDate) && tempDate > new Date()) { 
                  yearToUse = currentActualYear - 1;
             }
           }
           
           const parsedDate = new Date(yearToUse, month, day);
           if (!isDateValid(parsedDate)) {
-            console.warn(`Constructed invalid date for: ${apiDateStr} with year ${yearToUse}`);
+            console.warn(`LotoPredict API Route: Constructed invalid date for: ${apiDateStr} with year ${yearToUse}`);
             continue;
           }
           drawDateISO = format(parsedDate, 'yyyy-MM-dd');
 
         } catch (e) {
-          console.warn(`Error parsing date string: ${apiDateStr}`, e);
+          console.warn(`LotoPredict API Route: Error parsing date string: ${apiDateStr}`, e);
           continue;
         }
 
@@ -152,30 +169,26 @@ export async function GET(request: NextRequest) {
           const winningNumbers = (draw.winningNumbers.match(/\d+/g) || []).map(Number).slice(0, 5);
           const machineNumbers = (draw.machineNumbers?.match(/\d+/g) || []).map(Number).slice(0, 5);
 
-          if (winningNumbers.length === 5) { // Machine numbers are optional for a valid entry based on previous logic
+          if (winningNumbers.length === 5) { 
             results.push({
-              draw_name: drawName, // This is the simple name like "Réveil"
+              draw_name: drawName, 
               date: drawDateISO,
               gagnants: winningNumbers,
-              machine: machineNumbers.length === 5 ? machineNumbers : [], // Store as empty if not 5
+              machine: machineNumbers.length === 5 ? machineNumbers : [], 
             });
-          } else {
-            // console.warn(`Incomplete winning numbers for ${drawName} on ${drawDateISO}`);
           }
         }
       }
     }
     
     if (results.length === 0 && monthQuery) {
-      // It's okay to return empty if a specific month had no data, don't 404
        return NextResponse.json([], { status: 200 });
     }
-
 
     return NextResponse.json(results, { status: 200 });
 
   } catch (error: any) {
-    console.error('Error in /api/loto-results:', error);
-    return NextResponse.json({ error: 'Internal server error while fetching lottery results.', details: error.message }, { status: 500 });
+    console.error('LotoPredict API Route: Unhandled error in /api/loto-results GET handler:', error);
+    return NextResponse.json({ error: 'Internal server error while processing lottery results.', details: error.message }, { status: 500 });
   }
 }
