@@ -2,7 +2,7 @@
 "use client";
 import React from 'react'; // Added React for Suspense and lazy
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Database, FileUp, Download, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react"; // Kept Download, removed FileDown
+import { Database, FileUp, Download, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -149,7 +149,7 @@ export default function AdminDashboardPage() {
             <FeatureTile 
               icon={<Edit3 />} 
               title="Modifier un Résultat" 
-              description="Options pour éditer des résultats existants." 
+              description="Options pour éditer des résultats existants. (Prochainement)" 
               onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "La modification des résultats sera bientôt disponible."})} 
             />
             <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." onClick={() => {}} />
@@ -199,13 +199,13 @@ export default function AdminDashboardPage() {
           <FeatureTile 
             icon={<BarChartHorizontalBig />} 
             title="Statistiques des Données" 
-            description="Visualiser des métriques sur les données stockées." 
+            description="Visualiser des métriques sur les données stockées. (Prochainement)" 
             onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les statistiques des données seront bientôt disponibles."})}
           />
           <FeatureTile 
             icon={<ListChecks />} 
             title="Journaux d'Activité" 
-            description="Suivre les opérations de synchronisation et les erreurs." 
+            description="Suivre les opérations de synchronisation et les erreurs. (Prochainement)" 
             onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les journaux d'activité seront bientôt disponibles."})}
           />
         </CardContent>
