@@ -50,8 +50,9 @@ export default function AdminImportPage() {
       return null; // Invalid numbers or wrong count
     }
     if (numbers.length === 0 && expectedCount > 0) return null; // if required but empty
-    if (numbers.length > 0 && numbers.length !== expectedCount) return null; // if partially filled but not meeting count
-    
+    if (numbers.length > 0 && numbers.length !== expectedCount && expectedCount !== 0) return null; // if partially filled but not meeting count for required
+    if (numbers.length === 0 && expectedCount === 0) return []; // Correctly handle empty optional machine numbers
+
     // Basic range check
     if (numbers.some(n => n < 1 || n > 90)) return null;
     
@@ -69,8 +70,6 @@ export default function AdminImportPage() {
       } catch (error: any) {
         results.push({ status: 'error', message: `Erreur pour ${displayRecord}: ${error.message}`, originalRecord: displayRecord });
       }
-      // Optional: Add a small delay if hitting rate limits (not typical for Firestore client SDK)
-      // if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 100));
     }
     return results;
   };
@@ -95,19 +94,20 @@ export default function AdminImportPage() {
     try {
       if (file.type === "text/csv" || file.name.endsWith(".csv")) {
         const lines = fileContent.split(/\r\n|\n/);
-        const header = lines[0]; // Assuming first line is header
-        // Basic CSV header validation if needed: e.g. header.toLowerCase() === "date,apidrawname,winningnumbers,machinenumbers"
+        if (lines.length <= 1 && lines[0].trim() === "") { // Handle empty or header-only CSV
+           throw new Error("Le fichier CSV est vide ou ne contient que des en-têtes.");
+        }
+        // const header = lines[0]; // Assuming first line is header, not strictly validated
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i];
           if (!line.trim()) continue; // Skip empty lines
           const values = line.split(',');
-          if (values.length < 3) { // date, apiDrawName, winningNumbers are minimum
-             parsedRecords.push({ input: {} as any, originalLine: line, originalIndex: i }); // Mark as invalid for later error reporting
-             fileParseError += `Ligne ${i+1} ignorée: nombre de colonnes insuffisant. Attendu au moins 3, obtenu ${values.length}. Ligne: "${line}"\n`;
+          if (values.length < 3) { 
+             fileParseError += `Ligne ${i+1} ignorée: nombre de colonnes insuffisant. Attendu au moins 3 (date,apiDrawName,winningNumbers), obtenu ${values.length}. Ligne: "${line}"\n`;
              continue;
           }
 
-          const [dateStr, apiDrawNameFromFile, wnStr, mnStr] = values.map(v => v.trim());
+          const [dateStr, apiDrawNameFromFile, wnStr, mnStr = ""] = values.map(v => v.trim());
           
           const dateObj = dateFnsParse(dateStr, 'yyyy-MM-dd', new Date());
           if (!isDateValid(dateObj)) {
@@ -124,16 +124,15 @@ export default function AdminImportPage() {
 
           const winningNumbers = parseNumbersString(wnStr, 5);
           if (!winningNumbers) {
-            fileParseError += `Ligne ${i+1} ignorée: Numéros gagnants invalides "${wnStr}".\n`;
+            fileParseError += `Ligne ${i+1} ignorée: Numéros gagnants invalides "${wnStr}". Attendu 5 numéros (1-90) séparés par ';'.\n`;
             continue;
           }
           
-          const machineNumbers = mnStr ? parseNumbersString(mnStr, 5) : [];
-          if (mnStr && !machineNumbers) { // if mnStr is provided but parsing fails
-             fileParseError += `Ligne ${i+1} ignorée: Numéros machine invalides "${mnStr}".\n`;
+          const machineNumbers = parseNumbersString(mnStr, mnStr ? 5 : 0); // Expect 5 if mnStr is provided, 0 otherwise
+          if (mnStr && !machineNumbers) { 
+             fileParseError += `Ligne ${i+1} ignorée: Numéros machine invalides "${mnStr}". Si fournis, 5 numéros (1-90) séparés par ';' sont attendus.\n`;
              continue;
           }
-
 
           parsedRecords.push({
             input: { drawSlug, date: dateObj, winningNumbers, machineNumbers: machineNumbers || [] },
@@ -144,15 +143,16 @@ export default function AdminImportPage() {
       } else if (file.type === "application/json" || file.name.endsWith(".json")) {
         const jsonData: Array<any> = JSON.parse(fileContent);
         if (!Array.isArray(jsonData)) throw new Error("Le fichier JSON doit être un tableau d'objets.");
+        if (jsonData.length === 0) throw new Error("Le fichier JSON est un tableau vide.");
 
         jsonData.forEach((item, index) => {
           if (!item.date || !item.apiDrawName || !item.winningNumbers) {
              fileParseError += `Objet JSON ${index+1} ignoré: champs requis manquants (date, apiDrawName, winningNumbers).\n`;
-             return; // continue to next item
+             return; 
           }
           const dateObj = dateFnsParse(item.date, 'yyyy-MM-dd', new Date());
           if (!isDateValid(dateObj)) {
-            fileParseError += `Objet JSON ${index+1} ignoré: Format de date invalide "${item.date}".\n`;
+            fileParseError += `Objet JSON ${index+1} ignoré: Format de date invalide "${item.date}". Attendu YYYY-MM-DD.\n`;
             return;
           }
           
@@ -164,18 +164,19 @@ export default function AdminImportPage() {
           }
 
           if (!Array.isArray(item.winningNumbers) || item.winningNumbers.length !== 5 || item.winningNumbers.some((n:any) => typeof n !== 'number' || n < 1 || n > 90)) {
-            fileParseError += `Objet JSON ${index+1} ignoré: Numéros gagnants invalides.\n`;
+            fileParseError += `Objet JSON ${index+1} ignoré: Numéros gagnants invalides. Attendu un tableau de 5 nombres (1-90).\n`;
             return;
           }
           
           let machineNumbers: number[] = [];
-          if (item.machineNumbers) {
-            if (!Array.isArray(item.machineNumbers) || item.machineNumbers.length !== 5 || item.machineNumbers.some((n:any) => typeof n !== 'number' || n < 1 || n > 90)) {
-                 fileParseError += `Objet JSON ${index+1} ignoré: Numéros machine invalides.\n`;
+          if (item.machineNumbers !== undefined && item.machineNumbers !== null) { // Check for presence
+            if (!Array.isArray(item.machineNumbers) || (item.machineNumbers.length > 0 && item.machineNumbers.length !== 5) || item.machineNumbers.some((n:any) => typeof n !== 'number' || n < 1 || n > 90)) {
+                 fileParseError += `Objet JSON ${index+1} ignoré: Numéros machine invalides. Si fournis, doit être un tableau de 5 nombres (1-90).\n`;
                  return;
             }
-            machineNumbers = item.machineNumbers;
+            machineNumbers = item.machineNumbers.length === 0 && item.machineNumbers !== undefined ? [] : item.machineNumbers; // Allow empty array if explicitly passed
           }
+
 
           parsedRecords.push({
             input: { drawSlug, date: dateObj, winningNumbers: item.winningNumbers, machineNumbers },
@@ -188,19 +189,29 @@ export default function AdminImportPage() {
     } catch (e: any) {
       fileParseError += `Erreur de lecture ou de parsage du fichier: ${e.message}\n`;
     }
+    
+    let finalResults: ImportResult[] = [];
+    if (parsedRecords.length > 0) {
+        const processingResults = await processRecords(parsedRecords.filter(pr => pr.input.drawSlug)); 
+        finalResults.push(...processingResults);
+    }
 
-    const processingResults = await processRecords(parsedRecords.filter(pr => pr.input.drawSlug)); // Only process records that have a valid slug
-    const finalResults = [...processingResults];
     if(fileParseError) {
-        finalResults.unshift({status: 'error', message: `Erreurs de pré-traitement du fichier:\n${fileParseError}`});
+        finalResults.unshift({status: 'error', message: `Erreurs de pré-traitement ou de formatage du fichier:\n${fileParseError.trim()}`});
+    }
+    
+    if (parsedRecords.length === 0 && !fileParseError && finalResults.length === 0) {
+        finalResults.push({status: 'error', message: "Aucun enregistrement valide n'a été trouvé dans le fichier pour l'importation."});
     }
     
     setImportResults(finalResults);
 
     const successCount = finalResults.filter(r => r.status === 'success').length;
-    const errorCount = finalResults.filter(r => r.status === 'error').length - (fileParseError ? 1 : 0); // Don't double count fileParseError
+    const errorDuringProcessingCount = finalResults.filter(r => r.status === 'error' && r.message.startsWith('Erreur pour')).length;
+    const fileLevelErrorCount = finalResults.filter(r => r.status === 'error' && !r.message.startsWith('Erreur pour')).length;
 
-    if (successCount > 0 && errorCount === 0 && !fileParseError) {
+
+    if (successCount > 0 && errorDuringProcessingCount === 0 && fileLevelErrorCount === 0) {
       toast({
         title: "Importation Réussie",
         description: `${successCount} enregistrement(s) importé(s) avec succès.`,
@@ -209,21 +220,22 @@ export default function AdminImportPage() {
        toast({
         variant: "default",
         title: "Importation Partielle",
-        description: `${successCount} enregistrement(s) importé(s). ${errorCount} erreur(s) et des erreurs de parsage. Voir détails ci-dessous.`,
+        description: `${successCount} enregistrement(s) importé(s). ${errorDuringProcessingCount + fileLevelErrorCount} erreur(s) au total. Voir détails ci-dessous.`,
       });
-    } else {
+    } else if (finalResults.length > 0) { // Only errors
       toast({
         variant: "destructive",
         title: "Échec de l'Importation",
-        description: `Aucun enregistrement n'a pu être importé. ${errorCount + (fileParseError ? 1 : 0)} erreur(s). Voir détails ci-dessous.`,
+        description: `Aucun enregistrement n'a pu être importé. ${errorDuringProcessingCount + fileLevelErrorCount} erreur(s). Voir détails ci-dessous.`,
       });
     }
+    // If finalResults is empty (e.g. empty file was submitted and caught early), a toast might have already been shown or no action needed.
 
     setIsLoading(false);
-    setFile(null);
+    setFile(null); // Clear the file from state
     const fileInput = document.getElementById('file-upload') as HTMLInputElement;
     if (fileInput) {
-        fileInput.value = '';
+        fileInput.value = ''; // Reset the file input field
     }
   };
 
@@ -267,18 +279,17 @@ export default function AdminImportPage() {
             <Alert variant="default" className="border-primary/30 bg-primary/5">
               <FileUp className="h-4 w-4 text-primary" />
               <AlertTitle className="text-primary">Format Attendu pour les Fichiers</AlertTitle>
-              <AlertDescription className="text-muted-foreground space-y-1">
-                <p><strong>Pour CSV :</strong> En-tête attendu (optionnel mais recommandé pour clarté) : <code>date,apiDrawName,winningNumbers,machineNumbers</code>.
-                Les colonnes doivent être dans cet ordre.
+              <AlertDescription className="text-muted-foreground space-y-1 text-xs">
+                <p><strong>Pour CSV :</strong> Ligne d'en-tête ignorée. Les colonnes doivent être dans cet ordre : <code>date,apiDrawName,winningNumbers,machineNumbers</code>.
                 La date doit être au format <code>YYYY-MM-DD</code>.
-                <code>apiDrawName</code> est le nom simple du tirage (ex: "Réveil", "Étoile").
-                <code>winningNumbers</code> : chaîne de 5 numéros séparés par des points-virgules (ex: <code>1;2;3;4;5</code>).
-                <code>machineNumbers</code> (optionnel) : chaîne de 5 numéros séparés par des points-virgules.</p>
+                <code>apiDrawName</code> est le nom simple du tirage (ex: "Réveil", "Étoile", insensible à la casse et aux accents).
+                <code>winningNumbers</code> : chaîne de 5 numéros (1-90) séparés par des points-virgules (ex: <code>1;2;3;4;5</code>). Requis.
+                <code>machineNumbers</code> : chaîne de 5 numéros (1-90) séparés par des points-virgules. Optionnel ; laissez vide ou omettez la colonne si non applicable.</p>
                 <p><strong>Pour JSON :</strong> Un tableau d'objets. Chaque objet doit avoir :
                  <code>date</code> (chaîne <code>YYYY-MM-DD</code>),
-                 <code>apiDrawName</code> (chaîne, nom simple du tirage, ex: "Réveil"),
-                 <code>winningNumbers</code> (tableau de 5 nombres),
-                 <code>machineNumbers</code> (optionnel, tableau de 5 nombres).</p>
+                 <code>apiDrawName</code> (chaîne, nom simple du tirage, ex: "Réveil", insensible à la casse et aux accents),
+                 <code>winningNumbers</code> (tableau de 5 nombres, 1-90). Requis.
+                 <code>machineNumbers</code> (tableau de 5 nombres, 1-90). Optionnel ; peut être un tableau vide ou omis si non applicable.</p>
               </AlertDescription>
             </Alert>
           </CardContent>
@@ -298,9 +309,9 @@ export default function AdminImportPage() {
           </CardHeader>
           <CardContent className="max-h-96 overflow-y-auto space-y-2">
             {importResults.map((result, index) => (
-              <Alert key={index} variant={result.status === 'success' ? 'default' : 'destructive'} className={result.status === 'success' ? 'border-green-500/50 bg-green-500/10' : ''}>
+              <Alert key={index} variant={result.status === 'success' ? 'default' : 'destructive'} className={result.status === 'success' ? 'border-green-500/50 bg-green-500/10 text-green-700 [&>svg]:text-green-600' : 'text-destructive [&>svg]:text-destructive'}>
                 {result.status === 'success' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                <AlertTitle>{result.status === 'success' ? 'Succès' : 'Erreur'}</AlertTitle>
+                <AlertTitle className={result.status === 'success' ? 'text-green-800' : 'text-destructive' }>{result.status === 'success' ? 'Succès' : 'Erreur'}</AlertTitle>
                 <AlertDescription className="whitespace-pre-wrap text-xs">{result.message}</AlertDescription>
               </Alert>
             ))}
@@ -310,3 +321,4 @@ export default function AdminImportPage() {
     </div>
   );
 }
+
