@@ -26,8 +26,8 @@ const GenerateDrawPredictionsInputSchema = z.object({
     .describe(
       'An array of historical lottery draw data objects used to generate predictions.'
     ),
-  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data").'),
-  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends").'),
+  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data"). This guides how much history is emphasized.'),
+  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends"). This influences the importance of recent vs. older data.'),
 });
 export type GenerateDrawPredictionsInput = z.infer<typeof GenerateDrawPredictionsInputSchema>;
 
@@ -38,9 +38,9 @@ const GenerateDrawPredictionsOutputSchema = z.object({
     .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows (e.g., over 10, 20, 50 draws), mean gaps between appearances, and moving averages of frequencies (e.g., over 5, 10, 20 draws) informed the prediction.'),
-  confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data.'),
-  confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence.'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency (considering windows like last 10, 20, 50 draws), recency (gaps between appearances), pairings, clusters, skip patterns, and any discerned temporal patterns (like moving averages of frequencies over 5, 10, 20 draws) or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows, mean gaps between appearances, and moving averages of frequencies informed the prediction.'),
+  confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data and the depth of analysis performed.'),
+  confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence (e.g., clarity of patterns, amount of historical data, consistency of trends).'),
 });
 export type GenerateDrawPredictionsOutput = z.infer<typeof GenerateDrawPredictionsOutputSchema>;
 
@@ -67,39 +67,34 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `You are a sophisticated lottery analysis system employing advanced neural network techniques (simulating RNN-LSTM for temporal sequences and XGBoost-like feature importance) to provide expert predictions. Your task is to analyze the provided historical data for the specified lottery draw.
+  prompt: `Vous êtes un système d'analyse de loterie expert, simulant une combinaison de modèles XGBoost (pour l'analyse tabulaire robuste et l'identification de l'importance des caractéristiques) et RNN-LSTM (pour la modélisation des séquences temporelles et la capture des dépendances à long terme). Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée pour le tirage spécifié.
 
-Lottery Draw Name: {{{drawName}}}
-User-specified Analysis Period: {{#if analysisPeriod}} {{{analysisPeriod}}} {{else}} Not specified, consider all data. {{/if}}
-User-specified Number Weighting: {{#if numberWeighting}} {{{numberWeighting}}} {{else}} Not specified, use balanced approach. {{/if}}
+Nom du Tirage : {{{drawName}}}
+Période d'Analyse Spécifiée par l'Utilisateur : {{#if analysisPeriod}} {{{analysisPeriod}}} {{else}} Non spécifié, considérez toutes les données fournies. {{/if}}
+Pondération des Numéros Spécifiée par l'Utilisateur : {{#if numberWeighting}} {{{numberWeighting}}} {{else}} Non spécifié, utilisez une approche équilibrée. {{/if}}
 
-Historical Data:
+Données Historiques Fournies :
 {{{historicalData}}}
 
-Perform an in-depth analysis considering:
-- Number Frequencies: Identify hot (frequent) and cold (infrequent) numbers. Consider frequencies within specific windows (e.g., last 10, 20, 50 draws).
-- Recency of Appearance: How recently numbers have been drawn. Explicitly consider the number of draws since the last appearance for each number (gaps between appearances).
-- Number Pairings and Clusters: Common groups of numbers appearing together.
-- Skip Patterns: Numbers that tend to skip a certain number of draws before reappearing.
-- Temporal Trends: Evolution of number frequencies or patterns over time. Analyze this using concepts similar to moving averages of frequencies over different window sizes (e.g., 5, 10, 20 draws).
-- Derived Features: Explicitly consider and mention in your reasoning how features like:
-    - Relative frequency of numbers over a sliding time window.
-    - Mean or median gaps between appearances of specific numbers.
-    - Frequent co-occurrences of numbers within the same draw.
-- Positional Analysis: (If applicable and data allows) Consider if numbers appear more frequently in specific winning positions.
-- Machine Numbers Influence: (If machine numbers are provided in historical data) Analyze any correlation or influence of machine numbers on winning numbers for subsequent draws.
+Effectuez une analyse approfondie en considérant les aspects suivants comme un analyste de données le ferait avec des modèles XGBoost et RNN-LSTM :
+- Caractéristiques Dérivées (Feature Engineering) :
+    - Fréquence des Numéros : Évaluez la fréquence de chaque numéro. Considérez spécifiquement les fréquences sur des fenêtres glissantes (par exemple, les 10, 20, et 50 derniers tirages).
+    - Écarts entre Apparitions : Analysez le nombre de tirages depuis la dernière apparition de chaque numéro (valeur de "skip" ou "gap"). Considérez la moyenne de ces écarts.
+    - Tendances Temporelles : Identifiez les tendances dans l'évolution des fréquences des numéros en simulant l'utilisation de moyennes mobiles des fréquences (par exemple, sur 5, 10, et 20 tirages).
+    - Co-occurrences : Notez les paires ou groupes de numéros qui apparaissent fréquemment ensemble dans le même tirage.
+- Analyse Séquentielle (Simulation RNN-LSTM) : Recherchez des motifs séquentiels, des dépendances à long terme, et des probabilités conditionnelles d'apparition de numéros basées sur les séquences précédentes.
+- Importance des Caractéristiques (Simulation XGBoost) : Déterminez quelles caractéristiques (fréquence récente, fréquence globale, écarts, etc.) semblent les plus prédictives.
 
-Strive for robust and generalizable patterns, avoiding over-fitting to very recent or sparse data unless specified by user weighting. Your analysis should reflect the depth expected from models optimized via techniques like hyperparameter tuning and temporal cross-validation.
+Mécanisme d'Apprentissage Simulé :
+Simulez un processus d'apprentissage continu. Si des prédictions passées (hypothétiques, basées sur votre analyse actuelle) étaient incorrectes par rapport aux résultats réels ultérieurs dans les données fournies, votre analyse actuelle devrait implicitement s'ajuster. Cela signifie que vous devez identifier les types de schémas qui auraient conduit à des erreurs et ceux qui auraient conduit à des succès, en affinant votre approche comme si vous ajustiez les poids d'un modèle par rétropropagation (pour LSTM) ou par gradient boosting (pour XGBoost). L'objectif est de minimiser les erreurs futures simulées et d'optimiser la précision. Équilibrez soigneusement le surapprentissage (overfitting) et la capacité de généralisation.
 
-Based on this comprehensive, multi-faceted analysis, provide:
-1.  predictions: An array of 5 distinct predicted numbers, each between 1 and 90.
-2.  reasoning: A detailed, professional explanation of the methodology. Articulate the specific patterns, statistical insights, and simulated model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...", "Analysis of derived features like mean skip values points to...", "Consideration of number frequencies over the last 20 draws highlights...", "The gap analysis for number X indicates...", "Moving averages of frequencies suggest a trend for number Y...") that led to your selection of each predicted number.
-3.  confidenceScore: A qualitative confidence score for these predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5).
-4.  confidenceReasoning: Briefly explain why this confidence level was assigned, considering data quality, pattern clarity, and historical predictability.
+Sur la base de cette analyse complète et multi-facettes, veuillez fournir :
+1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage, chaque numéro étant compris entre 1 et 90.
+2.  reasoning: Une explication détaillée et professionnelle de la méthodologie. Articulez les schémas spécifiques, les informations statistiques, et les interprétations de modèles simulés (par exemple, "L'analyse séquentielle de type LSTM suggère...", "La pondération des caractéristiques de type XGBoost indique...", "L'analyse des caractéristiques dérivées comme les écarts moyens pointe vers...", "La considération des fréquences des numéros sur les 20 derniers tirages met en évidence...", "L'analyse des écarts pour le numéro X indique...", "Les moyennes mobiles des fréquences suggèrent une tendance pour le numéro Y...") qui ont conduit à votre sélection de chaque numéro prédit.
+3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 3/5).
+4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées, de la quantité et de la qualité des données historiques fournies, et de la prévisibilité historique apparente du tirage.
 
-Simulate a learning process: If past predictions (hypothetically) were inaccurate, your current analysis should implicitly adjust by more heavily weighing patterns that would have corrected past errors, similar to how backpropagation refines a neural network or gradient boosting improves XGBoost. Focus on precision and avoid over-fitting to very recent or sparse data unless specified by weighting.
-
-Output the results strictly in JSON format, adhering to the output schema. Ensure the JSON is valid and contains no extraneous text.`,
+Produisez les résultats strictement au format JSON, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu.`,
 });
 
 const generateDrawPredictionsFlow = ai.defineFlow(
@@ -129,4 +124,3 @@ const generateDrawPredictionsFlow = ai.defineFlow(
     return output!;
   }
 );
-

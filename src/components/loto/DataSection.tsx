@@ -12,6 +12,7 @@ import { RefreshCw, ExternalLink } from 'lucide-react';
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { ScrollArea } from '../ui/scroll-area';
 
 interface DataSectionProps {
   drawSlug: string;
@@ -28,10 +29,14 @@ export function DataSection({ drawSlug }: DataSectionProps) {
     try {
       const result = await fetchDrawData(drawSlug);
       // Final client-side deduplication before setting state
-      const uniqueResults = Array.from(
-        new Map(result.map(item => [item.docId || `${item.date}`, item])).values()
-      );
-      setData(uniqueResults);
+      const uniqueResultsMap = new Map<string, DrawResult>();
+      result.forEach(item => {
+        const key = item.docId || `${item.date}`; // Use docId primarily
+        if (!uniqueResultsMap.has(key)) {
+          uniqueResultsMap.set(key, item);
+        }
+      });
+      setData(Array.from(uniqueResultsMap.values()));
     } catch (err) {
       setError("Erreur lors de la récupération des données.");
       console.error(err);
@@ -52,7 +57,7 @@ export function DataSection({ drawSlug }: DataSectionProps) {
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle className="text-2xl text-primary">Derniers Résultats du Tirage</CardTitle>
+            <CardTitle className="text-2xl text-primary">Historique Récent des Résultats</CardTitle>
             <CardDescription>{drawName} - Affichage des {data ? data.length : 'derniers'} résultats les plus récents.</CardDescription>
           </div>
           <Button onClick={loadData} disabled={isLoading} variant="outline" size="icon" aria-label="Rafraîchir les données">
@@ -63,7 +68,7 @@ export function DataSection({ drawSlug }: DataSectionProps) {
       <CardContent className="space-y-6">
         {isLoading ? (
           <div className="space-y-8">
-            {[...Array(3)].map((_, i) => (
+            {[...Array(5)].map((_, i) => ( // Show more skeletons as we expect more data
               <div key={i} className="space-y-4 p-4 border-b border-border last:border-b-0">
                 <Skeleton className="h-5 w-32 mb-3" /> {/* Date Skeleton */}
                 <div>
@@ -72,12 +77,14 @@ export function DataSection({ drawSlug }: DataSectionProps) {
                     {[...Array(5)].map((_, j) => <Skeleton key={`win-skel-${i}-${j}`} className="w-10 h-10 rounded-full" />)}
                   </div>
                 </div>
+                { (i % 2 === 0) && // Simulate some having machine numbers
                 <div>
                   <Skeleton className="h-6 w-1/3 mb-2" /> {/* Title Skeleton */}
                   <div className="flex space-x-2">
                     {[...Array(5)].map((_, j) => <Skeleton key={`mac-skel-${i}-${j}`} className="w-10 h-10 rounded-full" />)}
                   </div>
                 </div>
+                }
               </div>
             ))}
           </div>
@@ -85,30 +92,32 @@ export function DataSection({ drawSlug }: DataSectionProps) {
           <p className="text-destructive">{error}</p>
         ) : data && data.length > 0 ? (
           <>
-            <div className="space-y-8">
-              {data.map((draw, index) => (
-                <div key={draw.docId || `${draw.date}-${index}`} className="space-y-4 p-4 border-b border-border last:border-b-0 rounded-md shadow-sm bg-card/50">
-                  <p className="text-lg font-semibold text-primary">{draw.date}</p>
-                  <div>
-                    <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Gagnants</h3>
-                    <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
-                      {draw.winningNumbers.map(num => <LotoBall key={`win-${num}-${draw.docId || draw.date}`} number={num} />)}
-                    </div>
-                  </div>
-                  {draw.machineNumbers && draw.machineNumbers.length > 0 && (
+            <ScrollArea className="h-[600px] w-full pr-4"> {/* Added ScrollArea */}
+              <div className="space-y-8">
+                {data.map((draw, index) => (
+                  <div key={draw.docId || `${draw.date}-${index}`} className="space-y-4 p-4 border-b border-border last:border-b-0 rounded-md shadow-sm bg-card/50">
+                    <p className="text-lg font-semibold text-primary">{draw.date}</p>
                     <div>
-                      <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Machine</h3>
+                      <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Gagnants</h3>
                       <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
-                        {draw.machineNumbers.map(num => <LotoBall key={`mac-${num}-${draw.docId || draw.date}`} number={num} />)}
+                        {draw.winningNumbers.map(num => <LotoBall key={`win-${num}-${draw.docId || draw.date}`} number={num} />)}
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    {draw.machineNumbers && draw.machineNumbers.length > 0 && (
+                      <div>
+                        <h3 className="text-xl font-semibold mb-2 text-foreground">Numéros Machine</h3>
+                        <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
+                          {draw.machineNumbers.map(num => <LotoBall key={`mac-${num}-${draw.docId || draw.date}`} number={num} />)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
             <div className="mt-6 text-center">
               <p className="text-muted-foreground">
-                Pour consulter l'historique complet et des analyses détaillées, veuillez visiter les sections :
+                Pour une analyse plus approfondie et des filtres, veuillez visiter les sections :
               </p>
               <div className="flex justify-center gap-4 mt-2">
                 <Button variant="link" asChild className="text-primary hover:underline">

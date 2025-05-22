@@ -36,7 +36,6 @@ DRAW_SCHEDULE.forEach(daySchedule => {
     if (!canonicalDrawNameMap.has(normalizedKey)) {
       canonicalDrawNameMap.set(normalizedKey, canonicalName);
     }
-    // Also map the original name if it's different from the normalized one (e.g. includes accents but is used in API)
     const originalSimpleName = draw.name.toLowerCase().trim();
      if (originalSimpleName !== normalizedKey && !canonicalDrawNameMap.has(originalSimpleName)) {
         canonicalDrawNameMap.set(originalSimpleName, draw.name);
@@ -72,24 +71,27 @@ export function constructLottoResultDocId(date: string, apiDrawName: string): st
   // Ensure date is YYYY-MM-DD
   let formattedDate = date;
   try {
-    const isoDateCheck = dateFnsParse(date, 'yyyy-MM-DD', new Date());
-    if (!isValid(isoDateCheck) || format(isoDateCheck, 'yyyy-MM-dd') !== date) {
-        const pppParsedDate = dateFnsParse(date, 'PPP', new Date(), { locale: fr });
-        if (isValid(pppParsedDate)) {
-            formattedDate = format(pppParsedDate, 'yyyy-MM-dd');
-        } else {
-            const genericParsedDate = parseISO(date); 
-            if(isValid(genericParsedDate)) {
-                formattedDate = format(genericParsedDate, 'yyyy-MM-dd');
-            }
-        }
+    // Attempt to parse various common date formats and standardize to YYYY-MM-DD
+    let parsedDateObj;
+    if (date.match(/^\d{4}-\d{2}-\d{2}$/)) { // Already YYYY-MM-DD
+        parsedDateObj = parseISO(date);
+    } else if (date.includes('.')) { // Likely 'PPP' format e.g. "13 mai. 2025"
+        parsedDateObj = dateFnsParse(date, 'PPP', new Date(), { locale: fr });
+    } else { // Fallback, try direct ISO parsing
+        parsedDateObj = parseISO(date);
+    }
+    
+    if (isValid(parsedDateObj)) {
+        formattedDate = format(parsedDateObj, 'yyyy-MM-dd');
     }
   } catch (e) {
-    // console.warn("Date parsing for doc ID failed for:", date, ". Using original value.");
+    // console.warn("Date parsing for doc ID failed for:", date, ". Using original value after basic sanitization.");
+    formattedDate = date.replace(/[^0-9-]/g, ''); // Basic sanitization if parsing fails
   }
   const normalizedIdNamePart = normalizeApiDrawNameForDocId(apiDrawName);
   return `${formattedDate}_${normalizedIdNamePart}`;
 }
+
 
 // Helper to parse API date string (e.g., "Jeu. 25/07") to "YYYY-MM-DD"
 function parseApiDate(apiDateString: string, contextYear: number): string | null {
@@ -116,9 +118,8 @@ function parseNumbersString(numbersStr: string | null | undefined): number[] {
 async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]): Promise<void> {
   if (!draws.length) return;
 
-  const currentUser = auth.currentUser; // Get current auth state
+  const currentUser = auth.currentUser;
   const batch = writeBatch(db);
-  let batchHasOperations = false;
   const unauthenticatedWritePromises: Array<Promise<void>> = [];
 
   for (const draw of draws) {
@@ -132,7 +133,6 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
 
     if (currentUser) {
       batch.set(docRef, dataToSave, { merge: true });
-      batchHasOperations = true;
     } else {
       // For unauthenticated, only create if document doesn't exist to avoid permission errors on update
       const promise = (async () => {
@@ -150,7 +150,7 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
   }
 
   try {
-    if (batchHasOperations) {
+    if (currentUser && batch.set.length > 0) { // Check if batch has operations for current user
       await batch.commit();
     }
     if (unauthenticatedWritePromises.length > 0) {
@@ -235,7 +235,7 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<Firestor
 }
 
 export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => {
-  const fetchLimit = 3;
+  const fetchLimit = 20; // Increased to show more history directly in DataSection
   const canonicalDrawName = getApiDrawNameFromSlug(drawSlug);
   if (!canonicalDrawName) {
     throw new Error(`Unknown draw slug: ${drawSlug}`);
@@ -247,7 +247,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
       collection(db, RESULTS_COLLECTION_NAME),
       where("apiDrawName", "==", canonicalDrawName),
       orderBy("date", "desc"),
-      limit(fetchLimit * 2) // Fetch a bit more initially to help with deduplication
+      limit(fetchLimit * 2) 
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
@@ -255,17 +255,21 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     // console.error(`Error fetching latest draws for ${canonicalDrawName} from Firestore:`, error);
   }
   
-  const initialFirestoreCount = firestoreDocs.filter(doc => {
-      const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
-      const docKey = doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName);
-      return canonicalKey === docKey; // Count only those that would match their canonical key
-  }).length;
-
-
-  if (initialFirestoreCount < fetchLimit) {
+  if (firestoreDocs.length < fetchLimit) {
     let attempts = 0;
     const MONTHS_TO_CHECK_API = 3; 
     let currentDateIter = new Date(); 
+
+    // If Firestore results are few, start API check from the month of the oldest Firestore result, or current month.
+    if (firestoreDocs.length > 0) {
+        const oldestFirestoreDate = firestoreDocs[firestoreDocs.length - 1].date;
+        try {
+            currentDateIter = parseISO(oldestFirestoreDate);
+        } catch (e) {
+            // parsing failed, default to current month
+        }
+    }
+
 
     while (attempts < MONTHS_TO_CHECK_API) {
       const yearMonth = format(currentDateIter, 'yyyy-MM');
@@ -281,7 +285,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
         collection(db, RESULTS_COLLECTION_NAME),
         where("apiDrawName", "==", canonicalDrawName),
         orderBy("date", "desc"),
-        limit(fetchLimit * 2) // Fetch more again after sync
+        limit(fetchLimit * 2) 
       );
       const querySnapshotAfterSync = await getDocs(qAfterSync);
       querySnapshotAfterSync.forEach(doc => firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
@@ -292,12 +296,10 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
 
   const finalUniqueDocsMap = new Map<string, FirestoreDrawDoc>();
   firestoreDocs.forEach(doc => {
-    // Use a key based on content (date and normalized name) for deduplication
     const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
     if (!finalUniqueDocsMap.has(canonicalKey)) {
       finalUniqueDocsMap.set(canonicalKey, { ...doc, docId: doc.docId || canonicalKey });
     } else {
-      // If duplicate canonicalKey, prefer the one with a more recent fetchedAt timestamp, if available
       const existingDoc = finalUniqueDocsMap.get(canonicalKey)!;
       if (doc.fetchedAt && (!existingDoc.fetchedAt || doc.fetchedAt.toMillis() > existingDoc.fetchedAt.toMillis())) {
         finalUniqueDocsMap.set(canonicalKey, { ...doc, docId: doc.docId || canonicalKey });
@@ -315,11 +317,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
       return 0;
     });
   
-  if (trulyUniqueFirestoreResults.length === 0 && firestoreDocs.length > 0 && canonicalDrawName) {
-      // This case indicates all fetched docs might have been 'duplicates' of each other by canonicalKey,
-      // or something else went wrong. To avoid throwing error if API simply has no data,
-      // we check if original firestoreDocs was empty.
-  } else if (trulyUniqueFirestoreResults.length === 0 && canonicalDrawName) {
+  if (trulyUniqueFirestoreResults.length === 0 && canonicalDrawName && firestoreDocs.length === 0) {
      throw new Error(`No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API.`);
   }
 
@@ -329,7 +327,7 @@ export const fetchDrawData = async (drawSlug: string): Promise<DrawResult[]> => 
     .map(doc => {
       const drawDateObject = dateFnsParse(doc.date, 'yyyy-MM-dd', new Date());
       return {
-        docId: doc.docId, 
+        docId: doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName), 
         date: isValid(drawDateObject) ? format(drawDateObject, 'PPP', { locale: fr }) : 'Date invalide',
         winningNumbers: doc.winningNumbers,
         machineNumbers: doc.machineNumbers && doc.machineNumbers.length > 0 ? doc.machineNumbers : undefined,
@@ -415,7 +413,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
   return trulyUniqueFirestoreResults.slice(0, count).map(entry => {
     const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
     return {
-      docId: entry.docId,
+      docId: entry.docId || constructLottoResultDocId(entry.date, entry.apiDrawName),
       drawName: drawSlug, 
       date: isValid(entryDateObj) ? format(entryDateObj, 'PPP', { locale: fr }) : 'Date invalide',
       winningNumbers: entry.winningNumbers,
@@ -579,5 +577,3 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
   }
   await setDoc(docRef, dataToSave);
 }
-
-    
