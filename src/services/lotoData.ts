@@ -19,20 +19,18 @@ import {
   serverTimestamp,
   Timestamp,
   startAfter,
-  QueryConstraint,
-  DocumentSnapshot,
-  QueryDocumentSnapshot
+  type QueryConstraint,
+  type QueryDocumentSnapshot
 } from "firebase/firestore";
 
 const RESULTS_COLLECTION_NAME = 'lottoResults';
-const DEFAULT_PAGE_SIZE = 10;
-const MAX_HISTORICAL_FETCH_LIMIT = 100;
+const DEFAULT_PAGE_SIZE = 10; // Default for DataSection pagination
+const MAX_HISTORICAL_FETCH_LIMIT = 100; // Max for stats/AI historical data
 
 const canonicalDrawNameMap = new Map<string, string>();
 DRAW_SCHEDULE.forEach(daySchedule => {
   daySchedule.draws.forEach(draw => {
     const canonicalName = draw.name;
-    // Normalized key for map: lowercase, accents removed, trimmed
     const normalizedKey = canonicalName
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -41,12 +39,10 @@ DRAW_SCHEDULE.forEach(daySchedule => {
     if (!canonicalDrawNameMap.has(normalizedKey)) {
       canonicalDrawNameMap.set(normalizedKey, canonicalName);
     }
-    // Also map the original simple name if it's different from normalized (e.g. if it contained accents)
     const originalSimpleNameLower = draw.name.toLowerCase().trim();
-    if (originalSimpleNameLower !== normalizedKey && !canonicalDrawNameMap.has(originalSimpleNameLower)) {
+     if (originalSimpleNameLower !== normalizedKey && !canonicalDrawNameMap.has(originalSimpleNameLower)) {
         canonicalDrawNameMap.set(originalSimpleNameLower, draw.name);
     }
-    // And the accent-normalized version of the original simple name (might be redundant but safe)
     const originalSimpleNameNormalized = draw.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
      if (originalSimpleNameNormalized !== normalizedKey && !canonicalDrawNameMap.has(originalSimpleNameNormalized)) {
         canonicalDrawNameMap.set(originalSimpleNameNormalized, draw.name);
@@ -69,26 +65,25 @@ export function getApiDrawNameFromSlug(drawSlug: string): string | undefined {
 function normalizeApiDrawNameForDocId(apiDrawName: string): string {
  return apiDrawName
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // Remove accents
-    .replace(/\s+/g, '_') // Replace spaces with underscores
-    .replace(/[^\w-]/g, ''); // Remove any remaining non-alphanumeric characters except hyphen
+    .replace(/[\u0300-\u036f]/g, "") 
+    .replace(/\s+/g, '_') 
+    .replace(/[^\w-]/g, ''); 
 }
 
 export function constructLottoResultDocId(date: string, apiDrawName: string): string {
   let formattedDate = date;
   try {
-    // Attempt to parse various common date formats that might end up in 'date'
     let parsedDateObj;
-    if (date.match(/^\d{4}-\d{2}-\d{2}$/)) { // YYYY-MM-DD
+    if (date.match(/^\d{4}-\d{2}-\d{2}$/)) { 
         parsedDateObj = parseISO(date);
-    } else if (date.includes('.')) { // "dd MMM. yyyy" from 'PPP'
+    } else if (date.includes('.')) { 
         parsedDateObj = dateFnsParse(date, 'PPP', new Date(), { locale: fr });
-    } else if (date.includes('/')) { // DD/MM/YYYY or similar
+    } else if (date.includes('/')) { 
         const parts = date.split('/');
         if (parts.length === 3) {
-            if (parts[2].length === 4) { // DD/MM/YYYY
+            if (parts[2].length === 4) { 
                 parsedDateObj = dateFnsParse(date, 'dd/MM/yyyy', new Date());
-            } else { // DD/MM/YY
+            } else { 
                  parsedDateObj = dateFnsParse(date, 'dd/MM/yy', new Date());
             }
         }
@@ -97,9 +92,8 @@ export function constructLottoResultDocId(date: string, apiDrawName: string): st
     if (parsedDateObj && isValid(parsedDateObj)) {
         formattedDate = format(parsedDateObj, 'yyyy-MM-dd');
     } else {
-        // Fallback for unexpected formats: sanitize and hope for the best, or log an error
         // console.warn(`LotoData: Could not robustly parse date "${date}" for doc ID construction. Using sanitized version.`);
-        formattedDate = date.replace(/[^0-9-]/g, ''); // Keep only numbers and hyphens
+        formattedDate = date.replace(/[^0-9-]/g, ''); 
     }
   } catch (e) {
     // console.warn(`LotoData: Exception parsing date "${date}" for doc ID:`, e);
@@ -110,72 +104,8 @@ export function constructLottoResultDocId(date: string, apiDrawName: string): st
 }
 
 
-// Helper function to parse date string like "dim. 26/05"
-function parseApiDateScraped(apiDateString: string | undefined | null): string | null {
-  if (!apiDateString || typeof apiDateString !== 'string') {
-    // console.warn(`LotoData: Invalid apiDateString received for parsing: ${apiDateString}`);
-    return null;
-  }
-
-  const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/);
-  if (!dayMonthMatch || !dayMonthMatch[1]) {
-    // console.warn(`LotoData: Could not extract DD/MM from apiDateString: ${apiDateString}`);
-    return null;
-  }
-  const dayMonth = dayMonthMatch[1]; // e.g., "26/05"
-  const [dayStr, monthStr] = dayMonth.split('/');
-  const day = parseInt(dayStr, 10);
-  const month = parseInt(monthStr, 10) - 1; // month is 0-indexed in JS Date
-
-  if (isNaN(day) || isNaN(month) || month < 0 || month > 11 || day < 1 || day > 31) {
-    // console.warn(`LotoData: Invalid day or month parsed from apiDateString: ${apiDateString} -> day: ${day}, month: ${month + 1}`);
-    return null;
-  }
-
-  const now = new Date();
-  let year = now.getFullYear();
-
-  // Create a date with current year to compare month/day
-  const tentativeDateThisYear = new Date(year, month, day);
-
-  // If the parsed month/day is in the future relative to today, assume it's from the previous year.
-  // This handles the turn of the year (e.g., if it's Jan 2024 and we see "Dec 30", it means Dec 30, 2023).
-  // Also handle if the date is more than, say, 1 month in the future, it's likely previous year.
-  if (tentativeDateThisYear > now && (tentativeDateThisYear.getMonth() - now.getMonth() > 1 || tentativeDateThisYear.getFullYear() > now.getFullYear()) ) {
-      year = year - 1;
-  } else if (tentativeDateThisYear.getMonth() > now.getMonth() && tentativeDateThisYear.getFullYear() === now.getFullYear()){
-      // If month is in future, but same year (e.g. today is Jan, date is Feb), it's previous year.
-      // This might be too aggressive if site shows dates a bit into future.
-      // A safer bet is to check if the date is *significantly* in the future.
-      // Let's assume if the month is more than 1 month ahead, it's last year.
-      // This only really matters around year-end.
-      // For now, the simpler logic of "if date > today, assume last year" is a common heuristic for these "day. DD/MM" formats
-      if (month > now.getMonth() || (month === now.getMonth() && day > now.getDate())) {
-        year = year -1;
-      }
-  }
-
-
-  const parsedDate = new Date(year, month, day);
-  if (!isValid(parsedDate)) {
-    // console.warn(`LotoData: Constructed date is invalid for apiDateString: ${apiDateString} -> ${parsedDate}`);
-    return null;
-  }
-  return format(parsedDate, 'yyyy-MM-dd');
-}
-
-// Helper function to parse numbers string like "N - N - N - N - N"
-function parseNumbersStringScraped(numbersStr: string | null | undefined): number[] {
-  if (!numbersStr || typeof numbersStr !== 'string') return [];
-  // Ensure we only parse digits, handle potential non-numeric parts, and respect 1-90 range
-  return (numbersStr.split(' - ')
-    .map(n => parseInt(n.trim(), 10))
-    .filter(n => !isNaN(n) && n >= 1 && n <= 90)
-  ).slice(0, 5); // Take at most 5 valid numbers
-}
-
 async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]): Promise<void> {
-  if (!draws.length) return;
+  if (!draws || !draws.length) return;
 
   const currentUser = auth.currentUser;
   const batch = writeBatch(db);
@@ -183,7 +113,6 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
 
   const uniqueDrawsForPayloadMap = new Map<string, Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>>();
   draws.forEach(r => {
-    // Ensure date is in YYYY-MM-DD for doc ID construction
     const dateForId = r.date.match(/^\d{4}-\d{2}-\d{2}$/) ? r.date : format(parseISO(r.date), 'yyyy-MM-dd');
     const uniqueKey = constructLottoResultDocId(dateForId, r.apiDrawName);
 
@@ -201,7 +130,7 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
 
     const dataToSave: Omit<FirestoreDrawDoc, 'docId'> = {
       ...draw,
-      date: dateForDoc, // Ensure date is YYYY-MM-DD
+      date: dateForDoc,
       fetchedAt: serverTimestamp() as Timestamp,
       machineNumbers: draw.machineNumbers && draw.machineNumbers.length > 0 ? draw.machineNumbers : [],
     };
@@ -210,11 +139,12 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
       batch.set(docRef, dataToSave, { merge: true });
     } else {
       // For unauthenticated writes, check existence first to avoid permission errors on merge/update
+      // And perform individual writes instead of batching for clearer error handling with security rules
       const promise = (async () => {
         try {
           const docSnap = await getDoc(docRef);
           if (!docSnap.exists()) {
-            await setDoc(docRef, dataToSave); // Use setDoc without merge for creation
+            await setDoc(docRef, dataToSave); 
             // console.log(`LotoData: Unauthenticated: Created doc ${docId}`);
           } else {
             // console.log(`LotoData: Unauthenticated: Doc ${docId} already exists, skipping write.`);
@@ -241,12 +171,61 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' |
   }
 }
 
+function parseApiDateScraped(apiDateString: string | undefined | null): string | null {
+  if (!apiDateString || typeof apiDateString !== 'string') {
+    // console.warn(`LotoData: Invalid apiDateString received for parsing: ${apiDateString}`);
+    return null;
+  }
+
+  const dayMonthMatch = apiDateString.match(/(\d{2}\/\d{2})$/);
+  if (!dayMonthMatch || !dayMonthMatch[1]) {
+    // console.warn(`LotoData: Could not extract DD/MM from apiDateString: ${apiDateString}`);
+    return null;
+  }
+  const dayMonth = dayMonthMatch[1]; 
+  const [dayStr, monthStr] = dayMonth.split('/');
+  const day = parseInt(dayStr, 10);
+  const month = parseInt(monthStr, 10) - 1; 
+
+  if (isNaN(day) || isNaN(month) || month < 0 || month > 11 || day < 1 || day > 31) {
+    // console.warn(`LotoData: Invalid day or month parsed from apiDateString: ${apiDateString} -> day: ${day}, month: ${month + 1}`);
+    return null;
+  }
+
+  const now = new Date();
+  let year = now.getFullYear();
+  const tentativeDateThisYear = new Date(year, month, day);
+  
+  // If the parsed month/day forms a date in the current year that is in the future,
+  // assume it's from the previous year. This handles year turnover.
+  if (tentativeDateThisYear > now && (month > now.getMonth() || (month === now.getMonth() && day > now.getDate()))) {
+      year = year - 1;
+  }
+
+  const parsedDate = new Date(year, month, day);
+  if (!isValid(parsedDate)) {
+    // console.warn(`LotoData: Constructed date is invalid for apiDateString: ${apiDateString} -> ${parsedDate}`);
+    return null;
+  }
+  return format(parsedDate, 'yyyy-MM-dd');
+}
+
+function parseNumbersStringScraped(numbersStr: string | null | undefined): number[] {
+  if (!numbersStr || typeof numbersStr !== 'string') return [];
+  return (numbersStr.split(' - ')
+    .map(n => parseInt(n.trim(), 10))
+    .filter(n => !isNaN(n) && n >= 1 && n <= 90)
+  ).slice(0, 5); 
+}
+
 async function _scrapeMainResultsPageData(): Promise<Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]> {
+  // Configuration point: Target URL for scraping
   const url = "https://lotobonheur.ci/resultats";
   // console.log(`LotoData: Starting scrape from ${url}`);
   try {
     const response = await fetch(url, {
       headers: {
+        // Configuration point: User-Agent for the request
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html',
       }
@@ -258,6 +237,7 @@ async function _scrapeMainResultsPageData(): Promise<Omit<FirestoreDrawDoc, 'fet
     }
     const htmlContent = await response.text();
 
+    // Configuration point: The ID of the script tag containing the JSON data
     const scriptTagRegex = /<script id="__NEXT_DATA__" type="application\/json">(.+?)<\/script>/s;
     const match = htmlContent.match(scriptTagRegex);
 
@@ -273,9 +253,11 @@ async function _scrapeMainResultsPageData(): Promise<Omit<FirestoreDrawDoc, 'fet
       // console.error("LotoData: Failed to parse JSON from __NEXT_DATA__.", e);
       return [];
     }
-
+    
+    // Configuration point: Expected path to the weekly draw results within the JSON data
+    const expectedJsonPath = 'props.pageProps.resultsData.drawsResultsWeekly';
     if (!jsonData?.props?.pageProps?.resultsData?.drawsResultsWeekly) {
-      // console.error("LotoData: JSON structure from __NEXT_DATA__ is not as expected. Path 'props.pageProps.resultsData.drawsResultsWeekly' not found or invalid.");
+      // console.error(`LotoData: JSON structure from __NEXT_DATA__ is not as expected. Path '${expectedJsonPath}' not found or invalid.`);
       return [];
     }
 
@@ -335,7 +317,7 @@ async function _scrapeMainResultsPageData(): Promise<Omit<FirestoreDrawDoc, 'fet
           if (winningNumbers.length === 5) {
             parsedResults.push({
               apiDrawName: resolvedCanonicalName,
-              date: parsedDate, // YYYY-MM-DD
+              date: parsedDate, 
               winningNumbers: winningNumbers,
               machineNumbers: machineNumbersParsed.length === 5 ? machineNumbersParsed : [],
             });
@@ -356,64 +338,6 @@ async function _scrapeMainResultsPageData(): Promise<Omit<FirestoreDrawDoc, 'fet
   }
 }
 
-
-// Helper for deduplication based on content signature (day-month-numbers)
-const deduplicateByContentAndYear = (docs: FirestoreDrawDoc[]): FirestoreDrawDoc[] => {
-  const contentSignatureMap = new Map<string, FirestoreDrawDoc>();
-  docs.forEach(doc => {
-    if (!doc.date || !doc.apiDrawName || !doc.winningNumbers) {
-        // console.warn("LotoData: Skipping doc in deduplicateByContentAndYear due to missing critical fields:", doc.docId || doc);
-        return;
-    }
-
-    let dateObj;
-    try {
-      dateObj = parseISO(doc.date); // doc.date should be YYYY-MM-DD
-      if (!isValid(dateObj)) {
-        // console.warn(`LotoData: Invalid date for content signature: ${doc.date} in doc ${doc.docId}`);
-        return;
-      }
-    } catch (e) {
-        // console.warn(`LotoData: Error parsing date for content signature: ${doc.date} in doc ${doc.docId}`, e);
-        return;
-    }
-
-
-    const day = format(dateObj, 'dd');
-    const month = format(dateObj, 'MM');
-    const year = getYear(dateObj);
-
-    const wnString = [...doc.winningNumbers].sort((a, b) => a - b).join(',');
-    const mnString = doc.machineNumbers && doc.machineNumbers.length > 0 ? [...doc.machineNumbers].sort((a, b) => a - b).join(',') : 'none';
-    
-    // Use canonical draw name for signature
-    const normalizedApiNameToLookup = doc.apiDrawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    const canonicalApiDrawName = canonicalDrawNameMap.get(normalizedApiNameToLookup) || doc.apiDrawName; // Fallback to original if somehow not in map
-
-    const contentSignature = `${canonicalApiDrawName}-${day}-${month}-${wnString}-${mnString}`;
-
-    const existingEntry = contentSignatureMap.get(contentSignature);
-    if (!existingEntry) {
-      contentSignatureMap.set(contentSignature, doc);
-    } else {
-      // If signature exists, compare years and fetchedAt
-      const existingYear = getYear(parseISO(existingEntry.date));
-      if (year > existingYear) {
-        contentSignatureMap.set(contentSignature, doc); // Current doc is newer
-      } else if (year === existingYear) {
-        // If same year, prefer the one with a more recent fetchedAt timestamp
-        if (doc.fetchedAt && existingEntry.fetchedAt && doc.fetchedAt.toMillis() > existingEntry.fetchedAt.toMillis()) {
-          contentSignatureMap.set(contentSignature, doc);
-        } else if (doc.fetchedAt && !existingEntry.fetchedAt) {
-          contentSignatureMap.set(contentSignature, doc); // Current has fetchedAt, existing doesn't
-        }
-      }
-    }
-  });
-  return Array.from(contentSignatureMap.values());
-};
-
-
 export interface FetchDrawDataParams {
   drawSlug: string;
   pageSize?: number;
@@ -426,7 +350,6 @@ export interface FetchDrawDataResult {
   results: DrawResult[];
   lastDocSnapshot?: QueryDocumentSnapshot<FirestoreDrawDoc> | null;
 }
-
 
 export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchDrawDataResult> => {
   const { drawSlug, pageSize = DEFAULT_PAGE_SIZE, year, month, startAfterDoc = null } = params;
@@ -450,11 +373,10 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
   }
 
   queryConstraints.push(orderBy("date", "desc"));
-  queryConstraints.push(orderBy("fetchedAt", "desc")); // Secondary sort by fetch time
+  queryConstraints.push(orderBy("fetchedAt", "desc")); 
   
-  // Fetch slightly more for deduplication buffer if it's the first page and no filters
-  const effectivePageSize = (!year && !month && !startAfterDoc) ? pageSize * 2 : pageSize;
-  queryConstraints.push(limit(effectivePageSize));
+  const effectivePageSize = pageSize; // Standard page size
+  queryConstraints.push(limit(effectivePageSize * 2)); // Fetch more for deduplication buffer
 
 
   if (startAfterDoc) {
@@ -470,75 +392,75 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
     // console.error(`LotoData: Error fetching draws for ${canonicalDrawName} (slug: ${drawSlug}) from Firestore:`, error);
   }
 
-  // Attempt to scrape data if it's an initial load for a draw (no specific date filter, first page)
-  // and Firestore returned fewer results than requested for the first page.
   if (!year && !month && !startAfterDoc && firestoreDocsFromQuery.length < pageSize) {
     // console.log(`LotoData: Insufficient data for ${canonicalDrawName} in Firestore on initial load (got ${firestoreDocsFromQuery.length}, need ${pageSize}). Attempting scrape.`);
-    await _scrapeMainResultsPageData();
-    // Re-fetch from Firestore after potential scrape
     try {
-      firestoreDocsFromQuery = []; // Clear previous results from query
-      const querySnapshotAfterSync = await getDocs(q); // Re-run the same query
+      await _scrapeMainResultsPageData();
+      // Re-fetch from Firestore after potential scrape
+      firestoreDocsFromQuery = []; 
+      const querySnapshotAfterSync = await getDocs(q); 
       querySnapshotAfterSync.forEach(docSnap => firestoreDocsFromQuery.push({ docId: docSnap.id, ...docSnap.data() } as FirestoreDrawDoc));
       // console.log(`LotoData: Re-fetched ${firestoreDocsFromQuery.length} docs for ${canonicalDrawName} after scrape attempt.`);
-    } catch (error) {
-      // console.error(`LotoData: Error re-fetching draws from Firestore after API sync for ${canonicalDrawName}:`, error);
+    } catch (scrapeError) {
+      // console.error(`LotoData: Error during scrape or re-fetch for ${canonicalDrawName}:`, scrapeError);
     }
   }
-
-  // Deduplication: first by docId, then by contentSignature (day-month-numbers)
-  const uniqueByDocIdMap = new Map<string, FirestoreDrawDoc>();
+  
+  // Deduplication Logic
+  const uniqueByCanonicalKeyMap = new Map<string, FirestoreDrawDoc>();
   firestoreDocsFromQuery.forEach(doc => {
-    const key = doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName);
-    if (!uniqueByDocIdMap.has(key)) {
-      uniqueByDocIdMap.set(key, doc);
-    } else {
-      // If duplicate docId, prefer the one with a newer fetchedAt timestamp if available
-      const existing = uniqueByDocIdMap.get(key)!;
-      if (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) {
-        uniqueByDocIdMap.set(key, doc);
-      } else if (doc.fetchedAt && !existing.fetchedAt) {
-         uniqueByDocIdMap.set(key, doc);
-      }
+    const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
+    const existing = uniqueByCanonicalKeyMap.get(canonicalKey);
+    if (!existing || (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) || (doc.fetchedAt && !existing.fetchedAt)) {
+      uniqueByCanonicalKeyMap.set(canonicalKey, doc);
     }
   });
-  let processedDocs = Array.from(uniqueByDocIdMap.values());
-  processedDocs = deduplicateByContentAndYear(processedDocs);
 
-  // Sort again after all deduplication
+  // Further deduplication by content signature (day-month-numbers-year)
+  const contentSignatureMap = new Map<string, FirestoreDrawDoc>();
+  Array.from(uniqueByCanonicalKeyMap.values()).forEach(doc => {
+    if (!doc.date || !doc.winningNumbers) return;
+    let dateObj;
+    try { dateObj = parseISO(doc.date); if (!isValid(dateObj)) return; } 
+    catch (e) { return; }
+
+    const day = format(dateObj, 'dd');
+    const monthNum = format(dateObj, 'MM');
+    const yearNum = getYear(dateObj);
+    const wnString = [...doc.winningNumbers].sort((a, b) => a - b).join(',');
+    const mnString = doc.machineNumbers && doc.machineNumbers.length > 0 ? [...doc.machineNumbers].sort((a, b) => a - b).join(',') : 'none';
+    const contentSignature = `${doc.apiDrawName}-${day}-${monthNum}-${wnString}-${mnString}`; // Key for same day/month numbers, different years
+
+    const existingEntry = contentSignatureMap.get(contentSignature);
+    if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
+        contentSignatureMap.set(contentSignature, doc);
+    }
+  });
+
+  let processedDocs = Array.from(contentSignatureMap.values());
   processedDocs.sort((a, b) => {
     const dateComparison = b.date.localeCompare(a.date);
     if (dateComparison !== 0) return dateComparison;
-    if (a.fetchedAt && b.fetchedAt) {
-      return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
-    } else if (a.fetchedAt) {
-      return -1; // a has fetchedAt, b doesn't, so a is "newer" in this context
-    } else if (b.fetchedAt) {
-      return 1;  // b has fetchedAt, a doesn't
-    }
+    if (a.fetchedAt && b.fetchedAt) return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
     return 0;
   });
 
-  const finalDocsForPage = processedDocs.slice(0, pageSize);
-  const actualLastDocSnapshot = finalDocsForPage.length > 0 
-    ? firestoreDocsFromQuery.find(snap => snap.docId === finalDocsForPage[finalDocsForPage.length - 1]?.docId)
-    : null;
-    
-  let snapshotToReturn: QueryDocumentSnapshot<FirestoreDrawDoc> | null = null;
-  if (actualLastDocSnapshot && processedDocs.length > pageSize) {
-      const originalSnapshot = firestoreDocsFromQuery.find(s => s.docId === actualLastDocSnapshot.docId) as QueryDocumentSnapshot<FirestoreDrawDoc> | undefined;
-      if(originalSnapshot) snapshotToReturn = originalSnapshot;
+  const finalDocsForPage = processedDocs.slice(0, effectivePageSize);
+  let newLastDocSnapshot: QueryDocumentSnapshot<FirestoreDrawDoc> | null = null;
+  if (finalDocsForPage.length > 0 && processedDocs.length > effectivePageSize) {
+      // Find the original snapshot corresponding to the last item of the page
+      const lastItemOnPage = finalDocsForPage[finalDocsForPage.length - 1];
+      const originalSnapshot = firestoreDocsFromQuery.find(s => s.docId === lastItemOnPage.docId) as QueryDocumentSnapshot<FirestoreDrawDoc> | undefined;
+      if (originalSnapshot) {
+          newLastDocSnapshot = originalSnapshot;
+      }
   }
 
 
   const finalResults = finalDocsForPage.map(doc => {
       let drawDateObject;
-      try {
-        drawDateObject = parseISO(doc.date); // doc.date is expected to be YYYY-MM-DD
-      } catch (e) {
-        // console.warn(`LotoData: fetchDrawData - Invalid date format in doc ${doc.docId}: ${doc.date}`);
-        // Fallback or skip if necessary, here we'll try to format anyway or show error
-      }
+      try { drawDateObject = parseISO(doc.date); } 
+      catch (e) { /* ignore */ }
       return {
         docId: doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName),
         date: (drawDateObject && isValid(drawDateObject)) ? format(drawDateObject, 'PPP', { locale: fr }) : `Date invalide: ${doc.date}`,
@@ -548,18 +470,14 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
     });
 
   if (!year && !month && !startAfterDoc && finalResults.length === 0 && firestoreDocsFromQuery.length === 0) {
-    // This condition is tricky because an empty scrape result might be valid if the site has no data.
-    // However, if Firestore is also empty for this specific draw after attempts, it's a "no data" scenario.
     // console.log(`LotoData: No data found for draw ${canonicalDrawName} (slug: ${drawSlug}) after checking Firestore and API.`);
-    // Not throwing error here, let UI decide how to present "no data"
   }
 
   return {
     results: finalResults,
-    lastDocSnapshot: snapshotToReturn,
+    lastDocSnapshot: newLastDocSnapshot,
   };
 };
-
 
 export const fetchHistoricalData = async (drawSlug: string, count: number = 50): Promise<HistoricalDataEntry[]> => {
   const canonicalDrawName = getApiDrawNameFromSlug(drawSlug);
@@ -574,7 +492,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
       where("apiDrawName", "==", canonicalDrawName),
       orderBy("date", "desc"),
       orderBy("fetchedAt", "desc"),
-      limit(fetchLimit * 2) // Fetch more to account for deduplication
+      limit(fetchLimit * 2) 
     );
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
@@ -582,69 +500,70 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
     // console.error(`LotoData: Error fetching historical data for ${canonicalDrawName} from Firestore:`, error);
   }
 
-  // If Firestore has very few results (e.g. less than a small threshold), try scraping.
   if (firestoreDocs.length < Math.min(fetchLimit, 10)) {
     // console.log(`LotoData: Insufficient historical data for ${canonicalDrawName} in Firestore. Attempting scrape.`);
-    await _scrapeMainResultsPageData();
-    // Re-fetch after scrape
     try {
-      const qAfterSync = query(
-        collection(db, RESULTS_COLLECTION_NAME),
-        where("apiDrawName", "==", canonicalDrawName),
-        orderBy("date", "desc"),
-        orderBy("fetchedAt", "desc"),
-        limit(fetchLimit * 2) // Fetch more again
-      );
-      const querySnapshotAfterSync = await getDocs(qAfterSync);
-      firestoreDocs = []; // Reset before pushing new results
-      querySnapshotAfterSync.forEach(doc => firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
-      // console.log(`LotoData: Re-fetched ${firestoreDocs.length} historical docs for ${canonicalDrawName} after scrape.`);
-    } catch (error) {
-      // console.error(`LotoData: Error re-fetching historical data after API sync for ${canonicalDrawName}:`, error);
+        await _scrapeMainResultsPageData();
+        const qAfterSync = query(
+            collection(db, RESULTS_COLLECTION_NAME),
+            where("apiDrawName", "==", canonicalDrawName),
+            orderBy("date", "desc"),
+            orderBy("fetchedAt", "desc"),
+            limit(fetchLimit * 2)
+        );
+        const querySnapshotAfterSync = await getDocs(qAfterSync);
+        firestoreDocs = []; 
+        querySnapshotAfterSync.forEach(doc => firestoreDocs.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
+        // console.log(`LotoData: Re-fetched ${firestoreDocs.length} historical docs for ${canonicalDrawName} after scrape.`);
+    } catch (scrapeError) {
+        // console.error(`LotoData: Error during historical scrape or re-fetch for ${canonicalDrawName}:`, scrapeError);
     }
   }
 
-  const uniqueByDocIdMap = new Map<string, FirestoreDrawDoc>();
+  const uniqueByCanonicalKeyMap = new Map<string, FirestoreDrawDoc>();
   firestoreDocs.forEach(doc => {
-    const key = doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName);
-     if (!uniqueByDocIdMap.has(key)) {
-      uniqueByDocIdMap.set(key, doc);
-    } else {
-      const existing = uniqueByDocIdMap.get(key)!;
-      if (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) {
-        uniqueByDocIdMap.set(key, doc);
-      } else if (doc.fetchedAt && !existing.fetchedAt) {
-         uniqueByDocIdMap.set(key, doc);
-      }
+    const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
+    const existing = uniqueByCanonicalKeyMap.get(canonicalKey);
+     if (!existing || (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) || (doc.fetchedAt && !existing.fetchedAt)) {
+      uniqueByCanonicalKeyMap.set(canonicalKey, doc);
+    }
+  });
+  
+  const contentSignatureMap = new Map<string, FirestoreDrawDoc>();
+  Array.from(uniqueByCanonicalKeyMap.values()).forEach(doc => {
+    if (!doc.date || !doc.winningNumbers) return;
+    let dateObj;
+    try { dateObj = parseISO(doc.date); if (!isValid(dateObj)) return; } 
+    catch (e) { return; }
+
+    const day = format(dateObj, 'dd');
+    const monthNum = format(dateObj, 'MM');
+    const yearNum = getYear(dateObj);
+    const wnString = [...doc.winningNumbers].sort((a, b) => a - b).join(',');
+    const mnString = doc.machineNumbers && doc.machineNumbers.length > 0 ? [...doc.machineNumbers].sort((a, b) => a - b).join(',') : 'none';
+    const contentSignature = `${doc.apiDrawName}-${day}-${monthNum}-${wnString}-${mnString}`;
+
+    const existingEntry = contentSignatureMap.get(contentSignature);
+    if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
+        contentSignatureMap.set(contentSignature, doc);
     }
   });
 
-  let processedDocs = Array.from(uniqueByDocIdMap.values());
-  processedDocs = deduplicateByContentAndYear(processedDocs);
-
+  let processedDocs = Array.from(contentSignatureMap.values());
   processedDocs.sort((a, b) => {
       const dateComparison = b.date.localeCompare(a.date);
       if (dateComparison !== 0) return dateComparison;
-      if (a.fetchedAt && b.fetchedAt) {
-          return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
-      } else if (a.fetchedAt) {
-        return -1;
-      } else if (b.fetchedAt) {
-        return 1;
-      }
+      if (a.fetchedAt && b.fetchedAt) return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
       return 0;
   });
 
   return processedDocs.slice(0, fetchLimit).map(entry => {
     let entryDateObj;
-    try {
-      entryDateObj = parseISO(entry.date); // entry.date is expected to be YYYY-MM-DD
-    } catch (e) {
-      // console.warn(`LotoData: fetchHistoricalData - Invalid date format in entry ${entry.docId}: ${entry.date}`);
-    }
+    try { entryDateObj = parseISO(entry.date); } 
+    catch (e) { /* ignore */ }
     return {
       docId: entry.docId || constructLottoResultDocId(entry.date, entry.apiDrawName),
-      drawName: drawSlug, // Use the slug for consistency as drawName in HistoricalDataEntry
+      drawName: drawSlug, 
       date: (entryDateObj && isValid(entryDateObj)) ? format(entryDateObj, 'PPP', { locale: fr }) : `Date invalide: ${entry.date}`,
       winningNumbers: entry.winningNumbers,
       machineNumbers: entry.machineNumbers && entry.machineNumbers.length > 0 ? entry.machineNumbers : undefined,
@@ -716,88 +635,106 @@ export async function fetchNumberCoOccurrence(drawSlug: string, selectedNumber: 
 
 
 export const fetchRecentLottoResults = async (count: number = 20): Promise<FirestoreDrawDoc[]> => {
+  let firestoreResults: FirestoreDrawDoc[] = [];
   try {
     const q = query(
       collection(db, RESULTS_COLLECTION_NAME),
       orderBy("date", "desc"),
       orderBy("fetchedAt", "desc"),
-      limit(count * 2) // Fetch more for deduplication
+      limit(count * 2) 
     );
     const querySnapshot = await getDocs(q);
-    let firestoreResults: FirestoreDrawDoc[] = [];
     querySnapshot.forEach(doc => {
         firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc)
     });
-
-    const uniqueByDocIdMap = new Map<string, FirestoreDrawDoc>();
-    firestoreResults.forEach(doc => {
-        const key = doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName);
-         if (!uniqueByDocIdMap.has(key)) {
-          uniqueByDocIdMap.set(key, doc);
-        } else {
-          const existing = uniqueByDocIdMap.get(key)!;
-          if (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) {
-            uniqueByDocIdMap.set(key, doc);
-          } else if (doc.fetchedAt && !existing.fetchedAt) {
-             uniqueByDocIdMap.set(key, doc);
-          }
-        }
-    });
-    let processedDocs = Array.from(uniqueByDocIdMap.values());
-    processedDocs = deduplicateByContentAndYear(processedDocs);
-
-
-    return processedDocs
-        .sort((a,b) => {
-            const dateComparison = b.date.localeCompare(a.date);
-            if (dateComparison !== 0) return dateComparison;
-            if (a.fetchedAt && b.fetchedAt) {
-                return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
-            } else if (a.fetchedAt) {
-              return -1;
-            } else if (b.fetchedAt) {
-              return 1;
-            }
-            return 0;
-        })
-        .slice(0, count);
-  } catch (error) {
-    // console.error("LotoData: Error fetching recent lotto results from Firestore:", error);
-    return [];
+  } catch(error) {
+      // console.error("LotoData: Error fetching initial recent results:", error);
   }
+
+
+  const uniqueByCanonicalKeyMap = new Map<string, FirestoreDrawDoc>();
+  firestoreResults.forEach(doc => {
+      const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
+      const existing = uniqueByCanonicalKeyMap.get(canonicalKey);
+       if (!existing || (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) || (doc.fetchedAt && !existing.fetchedAt)) {
+        uniqueByCanonicalKeyMap.set(canonicalKey, doc);
+      }
+  });
+  
+  const contentSignatureMap = new Map<string, FirestoreDrawDoc>();
+  Array.from(uniqueByCanonicalKeyMap.values()).forEach(doc => {
+    if (!doc.date || !doc.winningNumbers) return;
+    let dateObj;
+    try { dateObj = parseISO(doc.date); if (!isValid(dateObj)) return; } 
+    catch (e) { return; }
+
+    const day = format(dateObj, 'dd');
+    const monthNum = format(dateObj, 'MM');
+    const yearNum = getYear(dateObj);
+    const wnString = [...doc.winningNumbers].sort((a, b) => a - b).join(',');
+    const mnString = doc.machineNumbers && doc.machineNumbers.length > 0 ? [...doc.machineNumbers].sort((a, b) => a - b).join(',') : 'none';
+    const contentSignature = `${doc.apiDrawName}-${day}-${monthNum}-${wnString}-${mnString}`;
+
+    const existingEntry = contentSignatureMap.get(contentSignature);
+    if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
+        contentSignatureMap.set(contentSignature, doc);
+    }
+  });
+
+  let processedDocs = Array.from(contentSignatureMap.values());
+  return processedDocs
+      .sort((a,b) => {
+          const dateComparison = b.date.localeCompare(a.date);
+          if (dateComparison !== 0) return dateComparison;
+          if (a.fetchedAt && b.fetchedAt) return b.fetchedAt.toMillis() - a.fetchedAt.toMillis();
+          return 0;
+      })
+      .slice(0, count);
 };
 
 export const fetchAllLottoResultsForExport = async (): Promise<FirestoreDrawDoc[]> => {
+   let results: FirestoreDrawDoc[] = [];
   try {
     const q = query(collection(db, RESULTS_COLLECTION_NAME), orderBy("date", "desc"));
     const querySnapshot = await getDocs(q);
-    const results: FirestoreDrawDoc[] = [];
     querySnapshot.forEach(doc => {
       results.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc)
     });
-
-    const uniqueByDocIdMap = new Map<string, FirestoreDrawDoc>();
-    results.forEach(doc => {
-        const key = doc.docId || constructLottoResultDocId(doc.date, doc.apiDrawName);
-         if (!uniqueByDocIdMap.has(key)) {
-          uniqueByDocIdMap.set(key, doc);
-        } else {
-          const existing = uniqueByDocIdMap.get(key)!;
-          if (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) {
-            uniqueByDocIdMap.set(key, doc);
-          } else if (doc.fetchedAt && !existing.fetchedAt) {
-             uniqueByDocIdMap.set(key, doc);
-          }
-        }
-    });
-    let processedDocs = Array.from(uniqueByDocIdMap.values());
-    processedDocs = deduplicateByContentAndYear(processedDocs);
-
-    return processedDocs.sort((a,b) => b.date.localeCompare(a.date));
-  } catch (error) {
-    // console.error("LotoData: Error fetching all lotto results for export from Firestore:", error);
-    return [];
+  } catch(error) {
+      // console.error("LotoData: Error fetching all results for export:", error);
   }
+
+  const uniqueByCanonicalKeyMap = new Map<string, FirestoreDrawDoc>();
+  results.forEach(doc => {
+      const canonicalKey = constructLottoResultDocId(doc.date, doc.apiDrawName);
+      const existing = uniqueByCanonicalKeyMap.get(canonicalKey);
+       if (!existing || (doc.fetchedAt && existing.fetchedAt && doc.fetchedAt.toMillis() > existing.fetchedAt.toMillis()) || (doc.fetchedAt && !existing.fetchedAt)) {
+        uniqueByCanonicalKeyMap.set(canonicalKey, doc);
+      }
+  });
+  
+  const contentSignatureMap = new Map<string, FirestoreDrawDoc>();
+  Array.from(uniqueByCanonicalKeyMap.values()).forEach(doc => {
+    if (!doc.date || !doc.winningNumbers) return;
+    let dateObj;
+    try { dateObj = parseISO(doc.date); if (!isValid(dateObj)) return; } 
+    catch (e) { return; }
+
+    const day = format(dateObj, 'dd');
+    const monthNum = format(dateObj, 'MM');
+    const yearNum = getYear(dateObj);
+    const wnString = [...doc.winningNumbers].sort((a, b) => a - b).join(',');
+    const mnString = doc.machineNumbers && doc.machineNumbers.length > 0 ? [...doc.machineNumbers].sort((a, b) => a - b).join(',') : 'none';
+    const contentSignature = `${doc.apiDrawName}-${day}-${monthNum}-${wnString}-${mnString}`;
+
+    const existingEntry = contentSignatureMap.get(contentSignature);
+    if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
+        contentSignatureMap.set(contentSignature, doc);
+    }
+  });
+  
+  let processedDocs = Array.from(contentSignatureMap.values());
+  return processedDocs.sort((a,b) => b.date.localeCompare(a.date));
 };
 
 export const deleteLottoResult = async (docId: string): Promise<void> => {
@@ -830,21 +767,24 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
 
   const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
   const docSnap = await getDoc(docRef);
+
   if (docSnap.exists()) {
     const existingData = docSnap.data() as FirestoreDrawDoc;
-    const wnMatch = existingData.winningNumbers.length === input.winningNumbers.length && existingData.winningNumbers.every((val, index) => val === input.winningNumbers[index]);
-    const mnInput = input.machineNumbers || [];
-    const mnExisting = existingData.machineNumbers || [];
+    const wnInputSorted = [...input.winningNumbers].sort((a,b) => a-b);
+    const wnExistingSorted = [...existingData.winningNumbers].sort((a,b) => a-b);
+    const wnMatch = wnInputSorted.length === wnExistingSorted.length && wnInputSorted.every((val, index) => val === wnExistingSorted[index]);
+    
+    const mnInput = input.machineNumbers && input.machineNumbers.length > 0 ? [...input.machineNumbers].sort((a,b) => a-b) : [];
+    const mnExisting = existingData.machineNumbers && existingData.machineNumbers.length > 0 ? [...existingData.machineNumbers].sort((a,b) => a-b) : [];
     const mnMatch = mnInput.length === mnExisting.length && mnInput.every((val, index) => val === mnExisting[index]);
 
     if (wnMatch && mnMatch) {
       // console.log(`LotoData: addManualLottoResult - Identical data already exists for ${docId}. Skipping write.`);
       throw new Error(`Un résultat identique pour le tirage "${getDrawNameBySlug(input.drawSlug) || canonicalDrawName}" à la date du ${format(input.date, 'PPP', {locale: fr})} existe déjà (ID: ${docId}).`);
     }
-    // console.log(`LotoData: addManualLottoResult - Data for ${docId} exists but differs. Allowing overwrite/update.`);
-    // If data differs, it's an update, which is fine for manual add (treated as authoritative)
+    // console.log(`LotoData: addManualLottoResult - Data for ${docId} exists but differs. Allowing overwrite/update for manual add.`);
   }
-  await setDoc(docRef, dataToSave, {merge: true}); // Use merge true to allow update if admin re-adds with different numbers
+  await setDoc(docRef, dataToSave, {merge: true}); 
 }
 
     
