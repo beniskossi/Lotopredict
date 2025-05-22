@@ -38,7 +38,7 @@ const GenerateDrawPredictionsOutputSchema = z.object({
     .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows, mean gaps between appearances, and frequent co-occurrences informed the prediction.'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency, recency, pairings, clusters, and any discerned temporal patterns or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows (e.g., over 10, 20, 50 draws), mean gaps between appearances, and moving averages of frequencies (e.g., over 5, 10, 20 draws) informed the prediction.'),
   confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data.'),
   confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence.'),
 });
@@ -77,11 +77,11 @@ Historical Data:
 {{{historicalData}}}
 
 Perform an in-depth analysis considering:
-- Number Frequencies: Identify hot (frequent) and cold (infrequent) numbers.
-- Recency of Appearance: How recently numbers have been drawn.
+- Number Frequencies: Identify hot (frequent) and cold (infrequent) numbers. Consider frequencies within specific windows (e.g., last 10, 20, 50 draws).
+- Recency of Appearance: How recently numbers have been drawn. Explicitly consider the number of draws since the last appearance for each number (gaps between appearances).
 - Number Pairings and Clusters: Common groups of numbers appearing together.
 - Skip Patterns: Numbers that tend to skip a certain number of draws before reappearing.
-- Temporal Trends: Evolution of number frequencies or patterns over time.
+- Temporal Trends: Evolution of number frequencies or patterns over time. Analyze this using concepts similar to moving averages of frequencies over different window sizes (e.g., 5, 10, 20 draws).
 - Derived Features: Explicitly consider and mention in your reasoning how features like:
     - Relative frequency of numbers over a sliding time window.
     - Mean or median gaps between appearances of specific numbers.
@@ -93,7 +93,7 @@ Strive for robust and generalizable patterns, avoiding over-fitting to very rece
 
 Based on this comprehensive, multi-faceted analysis, provide:
 1.  predictions: An array of 5 distinct predicted numbers, each between 1 and 90.
-2.  reasoning: A detailed, professional explanation of the methodology. Articulate the specific patterns, statistical insights, and simulated model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...", "Analysis of derived features like mean skip values points to...") that led to your selection of each predicted number.
+2.  reasoning: A detailed, professional explanation of the methodology. Articulate the specific patterns, statistical insights, and simulated model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates...", "Analysis of derived features like mean skip values points to...", "Consideration of number frequencies over the last 20 draws highlights...", "The gap analysis for number X indicates...", "Moving averages of frequencies suggest a trend for number Y...") that led to your selection of each predicted number.
 3.  confidenceScore: A qualitative confidence score for these predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5).
 4.  confidenceReasoning: Briefly explain why this confidence level was assigned, considering data quality, pattern clarity, and historical predictability.
 

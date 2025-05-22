@@ -249,9 +249,9 @@ async function _fetchAndParseMonthData(yearMonth: string): Promise<Omit<Firestor
     // Deduplicate results for the month before saving to prevent redundant writes
     const uniqueResultsForMonthMap = new Map<string, Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>>();
     parsedResults.forEach(r => {
-        const docId = constructLottoResultDocId(r.date, r.apiDrawName);
-        if (!uniqueResultsForMonthMap.has(docId)) {
-            uniqueResultsForMonthMap.set(docId, r);
+        const uniqueKey = `${r.date.trim().toLowerCase()}_${r.apiDrawName.trim().toLowerCase()}`;
+ if (!uniqueResultsForMonthMap.has(uniqueKey)) {
+ uniqueResultsForMonthMap.set(uniqueKey, r);
         }
     });
     const uniqueResultsForMonth = Array.from(uniqueResultsForMonthMap.values());
@@ -362,6 +362,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
       limit(count)
     );
     const querySnapshot = await getDocs(q);
+    console.log("Firestore results before deduplication:", firestoreResults);
     querySnapshot.forEach(doc => firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
   } catch (error) {
     console.error(`Error fetching historical data for ${canonicalDrawName} (slug: ${drawSlug}) from Firestore:`, error);
@@ -418,6 +419,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 20):
   const trulyUniqueFirestoreResults = Array.from(uniqueDrawsMap.values())
     .sort((a, b) => b.date.localeCompare(a.date)); // Sort YYYY-MM-DD strings
 
+  console.log("Firestore results after deduplication:", trulyUniqueFirestoreResults);
   return trulyUniqueFirestoreResults.slice(0, count).map(entry => {
     const entryDateObj = dateFnsParse(entry.date, 'yyyy-MM-dd', new Date());
     return {
@@ -490,11 +492,20 @@ export const fetchRecentLottoResults = async (count: number = 20): Promise<Fires
       limit(count)
     );
     const querySnapshot = await getDocs(q);
-    const results: FirestoreDrawDoc[] = [];
+    let firestoreResults: FirestoreDrawDoc[] = [];
     querySnapshot.forEach(doc => {
-      results.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc)
+ firestoreResults.push({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc)
     });
-    return results;
+
+    // Deduplicate results after fetching
+    const uniqueDrawsMap = new Map<string, FirestoreDrawDoc>();
+ firestoreResults.forEach(result => {
+      const key = result.docId || constructLottoResultDocId(result.date, result.apiDrawName); // Use docId or constructed key
+      if (!uniqueDrawsMap.has(key)) {
+ uniqueDrawsMap.set(key, {...result, docId: key }); // Ensure docId is part of the object
+      }
+    });
+ return Array.from(uniqueDrawsMap.values());
   } catch (error) {
     console.error("Error fetching recent lotto results from Firestore:", error);
     return [];
