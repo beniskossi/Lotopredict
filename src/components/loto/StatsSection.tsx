@@ -175,10 +175,10 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
     setEndDate(undefined);
   }
 
-  const handleExport = (format: 'CSV' | 'PDF') => {
+  const handleExport = (formatType: 'CSV' | 'PDF') => {
     toast({
       title: "Fonctionnalité en cours de développement",
-      description: `L'exportation en ${format} sera bientôt disponible.`,
+      description: `L'exportation en ${formatType} sera bientôt disponible.`,
     });
   };
 
