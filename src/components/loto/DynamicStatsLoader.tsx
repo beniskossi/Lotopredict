@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { DrawSlug } from '@/types/loto'; // Assuming DrawSlug is defined in types
+import type { DrawSlug } from '@/types/loto';
 import dynamic from 'next/dynamic';
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,17 +15,16 @@ const DynamicStatsSectionComponent = dynamic(
         <Skeleton className="h-8 w-1/2" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-40 w-full" />
-        <p>Chargement des statistiques...</p>
+        <p>Chargement des statistiques, veuillez patienter...</p>
       </div>
     )
   }
 );
 
 interface DynamicStatsLoaderProps {
-  drawSlug: string; // Or more specific type if available like DrawSlug
+  drawSlug: DrawSlug; 
 }
 
 export default function DynamicStatsLoader({ drawSlug }: DynamicStatsLoaderProps) {
   return <DynamicStatsSectionComponent drawSlug={drawSlug} />;
 }
-

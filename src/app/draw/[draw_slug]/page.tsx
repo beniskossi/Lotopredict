@@ -9,6 +9,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { AlertTriangle } from "lucide-react";
 import type { Metadata } from 'next';
 import DynamicStatsLoader from "@/components/loto/DynamicStatsLoader"; // Import the new loader component
+import { Skeleton } from "@/components/ui/skeleton"; // Ensure Skeleton is imported if used directly here (though it's in DynamicStatsLoader)
 
 type DrawPageProps = {
   params: { draw_slug: string };
