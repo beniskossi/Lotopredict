@@ -32,6 +32,21 @@ const numberSchema = z.preprocess(
     .optional()
 );
 
+const optionalMachineNumberSchema = z.preprocess(
+  (val) => {
+    const sVal = String(val).trim();
+    if (sVal === "") return undefined; // Explicitly return undefined for empty strings
+    return Number(sVal); // Convert to number, which might be NaN
+  },
+  z.union([
+    z.undefined(), // Allow undefined
+    z.number({ invalid_type_error: "Doit être un nombre." }) // Error if not a number (e.g. NaN)
+      .min(1, "Min 1")
+      .max(90, "Max 90")
+  ])
+);
+
+
 const AddResultSchema = z.object({
   drawSlug: z.string().min(1, "Veuillez sélectionner un tirage."),
   date: z.date({
@@ -43,11 +58,11 @@ const AddResultSchema = z.object({
   wn3: numberSchema.refine(val => val !== undefined, { message: "Requis" }),
   wn4: numberSchema.refine(val => val !== undefined, { message: "Requis" }),
   wn5: numberSchema.refine(val => val !== undefined, { message: "Requis" }),
-  mn1: numberSchema,
-  mn2: numberSchema,
-  mn3: numberSchema,
-  mn4: numberSchema,
-  mn5: numberSchema,
+  mn1: optionalMachineNumberSchema,
+  mn2: optionalMachineNumberSchema,
+  mn3: optionalMachineNumberSchema,
+  mn4: optionalMachineNumberSchema,
+  mn5: optionalMachineNumberSchema,
 })
 .superRefine((data, ctx) => {
   const winningNumbers = [data.wn1, data.wn2, data.wn3, data.wn4, data.wn5].filter(n => n !== undefined) as number[];
@@ -98,7 +113,8 @@ export default function AddResultPage() {
     setIsLoading(true);
     const winningNumbers = [values.wn1, values.wn2, values.wn3, values.wn4, values.wn5].filter(n => n !== undefined) as number[];
     const machineNumbersRaw = [values.mn1, values.mn2, values.mn3, values.mn4, values.mn5];
-    const machineNumbers = machineNumbersRaw.every(n => n !== undefined) ? machineNumbersRaw as number[] : undefined;
+    const machineNumbers = machineNumbersRaw.every(n => n !== undefined && n !== null) && machineNumbersRaw.filter(n => n !== undefined).length === 5 ? machineNumbersRaw.filter(n => n !== undefined) as number[] : undefined;
+
 
     const payload: ManualLottoResultInput = {
       drawSlug: values.drawSlug,
@@ -278,3 +294,6 @@ export default function AddResultPage() {
     </div>
   );
 }
+
+
+    
