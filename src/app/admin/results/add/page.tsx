@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { ALL_DRAW_NAMES_MAP } from '@/lib/lotoDraws.tsx'; 
+import { ALL_DRAW_NAMES_MAP } from '@/lib/lotoDraws.tsx';
 import type { ManualAddResultFormInput, ManualLottoResultInput } from '@/types/loto';
 import { addManualLottoResult } from '@/services/lotoData';
 import Link from 'next/link';
@@ -34,13 +34,19 @@ const numberSchema = z.preprocess(
 
 const optionalMachineNumberSchema = z.preprocess(
   (val) => {
-    const sVal = String(val).trim();
-    if (sVal === "") return undefined; // Explicitly return undefined for empty strings
-    return Number(sVal); // Convert to number, which might be NaN
+    if (val === undefined || val === null || String(val).trim() === "") {
+      // If the value from react-hook-form is already undefined (for an empty field),
+      // or if it's null, or an empty/whitespace string,
+      // then Zod should treat it as undefined for validation purposes.
+      return undefined;
+    }
+    // For any other case (a number, a numeric string, or a non-numeric string that will become NaN),
+    // attempt to convert to Number. z.number() will then handle validation or type errors.
+    return Number(val);
   },
   z.union([
-    z.undefined(), // Allow undefined
-    z.number({ invalid_type_error: "Doit être un nombre." }) // Error if not a number (e.g. NaN)
+    z.undefined(),
+    z.number({ invalid_type_error: "Doit être un nombre." })
       .min(1, "Min 1")
       .max(90, "Max 90")
   ])
@@ -113,14 +119,28 @@ export default function AddResultPage() {
     setIsLoading(true);
     const winningNumbers = [values.wn1, values.wn2, values.wn3, values.wn4, values.wn5].filter(n => n !== undefined) as number[];
     const machineNumbersRaw = [values.mn1, values.mn2, values.mn3, values.mn4, values.mn5];
-    const machineNumbers = machineNumbersRaw.every(n => n !== undefined && n !== null) && machineNumbersRaw.filter(n => n !== undefined).length === 5 ? machineNumbersRaw.filter(n => n !== undefined) as number[] : undefined;
+    
+    // Determine if machineNumbers should be included based on whether ALL mn fields are filled or ALL are empty (undefined)
+    const allMnFieldsAreProvided = machineNumbersRaw.every(n => n !== undefined && n !== null && !isNaN(n));
+    const allMnFieldsAreEmpty = machineNumbersRaw.every(n => n === undefined);
+
+    let machineNumbers: number[] | undefined;
+    if (allMnFieldsAreProvided && machineNumbersRaw.filter(n => n !== undefined).length === 5) {
+        machineNumbers = machineNumbersRaw.filter(n => n !== undefined) as number[];
+    } else if (allMnFieldsAreEmpty) {
+        machineNumbers = undefined; // Explicitly undefined if all are empty
+    } else {
+        // This case should be caught by superRefine ("Si des numéros machine sont fournis, les 5 doivent être remplis.")
+        // but as a safeguard for payload construction:
+        machineNumbers = undefined; 
+    }
 
 
     const payload: ManualLottoResultInput = {
       drawSlug: values.drawSlug,
       date: values.date,
       winningNumbers: winningNumbers,
-      machineNumbers: machineNumbers,
+      machineNumbers: machineNumbers, // This will be undefined if not all 5 are provided, or an array of 5 numbers
     };
 
     try {
@@ -294,6 +314,5 @@ export default function AddResultPage() {
     </div>
   );
 }
-
-
     
+
