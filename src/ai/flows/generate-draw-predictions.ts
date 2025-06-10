@@ -67,7 +67,7 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `Vous êtes un système d'analyse de loterie expert, simulant une combinaison de modèles XGBoost (pour l'analyse tabulaire robuste et l'identification de l'importance des caractéristiques) et RNN-LSTM (pour la modélisation des séquences temporelles et la capture des dépendances à long terme). Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée pour le tirage spécifié.
+  prompt: `Vous êtes un système d'analyse de loterie expert. Votre rôle est de simuler une Forêt Aléatoire (Random Forest) pour générer des prédictions. Une Forêt Aléatoire combine les résultats de multiples arbres de décision, chacun entraîné sur différentes facettes des données et des caractéristiques, pour réduire le surapprentissage et améliorer la robustesse des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée pour le tirage spécifié, en expliquant comment les différentes stratégies et caractéristiques ont contribué à la décision finale, comme le ferait une Forêt Aléatoire.
 
 Nom du Tirage : {{{drawName}}}
 Période d'Analyse Spécifiée par l'Utilisateur : {{#if analysisPeriod}} {{{analysisPeriod}}} {{else}} Non spécifié, considérez toutes les données fournies. {{/if}}
@@ -76,23 +76,29 @@ Pondération des Numéros Spécifiée par l'Utilisateur : {{#if numberWeighting}
 Données Historiques Fournies :
 {{{historicalData}}}
 
-Effectuez une analyse approfondie en considérant les aspects suivants comme un analyste de données le ferait avec des modèles XGBoost et RNN-LSTM :
-- Caractéristiques Dérivées (Feature Engineering) :
-    - Fréquence des Numéros : Évaluez la fréquence de chaque numéro. Considérez spécifiquement les fréquences sur des fenêtres glissantes (par exemple, les 10, 20, et 50 derniers tirages).
-    - Écarts entre Apparitions : Analysez le nombre de tirages depuis la dernière apparition de chaque numéro (valeur de "skip" ou "gap"). Considérez la moyenne de ces écarts.
-    - Tendances Temporelles : Identifiez les tendances dans l'évolution des fréquences des numéros en simulant l'utilisation de moyennes mobiles des fréquences (par exemple, sur 5, 10, et 20 tirages).
-    - Co-occurrences : Notez les paires ou groupes de numéros qui apparaissent fréquemment ensemble dans le même tirage.
-- Analyse Séquentielle (Simulation RNN-LSTM) : Recherchez des motifs séquentiels, des dépendances à long terme, et des probabilités conditionnelles d'apparition de numéros basées sur les séquences précédentes.
-- Importance des Caractéristiques (Simulation XGBoost) : Déterminez quelles caractéristiques (fréquence récente, fréquence globale, écarts, etc.) semblent les plus prédictives.
+Effectuez une analyse approfondie en simulant le calcul et l'utilisation des caractéristiques suivantes pour chaque numéro (1 à 90) :
+- Délai moyen avant réapparition : Calculez ou estimez le nombre moyen de tirages avant qu'un numéro réapparaisse. Identifiez les numéros qui sont statistiquement 'en retard' pour une réapparition.
+- Fréquence d'apparition : Comptez la fréquence absolue et relative de chaque numéro dans les tirages historiques fournis. Considérez des fenêtres glissantes si pertinent (par exemple, les 10, 20 derniers tirages).
+- Numéro le plus fréquent associé :
+    - Dans le même tirage : Identifiez les numéros qui apparaissent le plus souvent dans le même tirage qu'un numéro donné.
+    - Dans le tirage suivant : Analysez quel numéro a tendance à apparaître dans le tirage *suivant* un tirage où un numéro donné est sorti.
+- Numéro + 20 : Pour chaque numéro X apparu dans l'historique, considérez le numéro X+20 (s'il est ≤ 90). Évaluez la fréquence historique de ces numéros dérivés (X+20).
+- Comparaison numéros machines/gagnants : Si des numéros machine sont présents dans les données historiques, comparez la fréquence d'apparition des numéros en tant que 'numéro machine' par rapport à leur fréquence en tant que 'numéro gagnant'.
+- Multiplication par 1,615 : Pour chaque numéro Y du *dernier tirage fourni dans les données historiques*, calculez Y' = arrondir(Y * 1,615). Si Y' ≤ 90, évaluez la fréquence historique de Y' pour juger de sa pertinence.
 
-Mécanisme d'Apprentissage Simulé :
-Simulez un processus d'apprentissage continu. Si des prédictions passées (hypothétiques, basées sur votre analyse actuelle) étaient incorrectes par rapport aux résultats réels ultérieurs dans les données fournies, votre analyse actuelle devrait implicitement s'ajuster. Cela signifie que vous devez identifier les types de schémas qui auraient conduit à des erreurs et ceux qui auraient conduit à des succès, en affinant votre approche comme si vous ajustiez les poids d'un modèle par rétropropagation (pour LSTM) ou par gradient boosting (pour XGBoost). L'objectif est de minimiser les erreurs futures simulées et d'optimiser la précision. Équilibrez soigneusement le surapprentissage (overfitting) et la capacité de généralisation.
+Mécanisme d'Apprentissage Simulé (Forêt Aléatoire) :
+Votre simulation de Forêt Aléatoire doit :
+1.  Calculer ou estimer l'importance de chaque caractéristique dérivée (délai moyen, fréquences diverses, associations, transformations comme +20 ou *1.615, corrélation machine/gagnants).
+2.  Simuler la construction de multiples arbres de décision, où chaque arbre pourrait se concentrer sur un sous-ensemble différent de ces caractéristiques ou de périodes de données.
+3.  Agréger les "votes" ou les scores de ces arbres simulés pour chaque numéro (1 à 90) afin d'obtenir un score de confiance global.
+4.  Expliquer comment vous avez pondéré ou combiné ces différentes stratégies (qui agissent comme des branches de décision ou des arbres individuels) pour arriver à vos prédictions.
+5.  Les paramètres fournis par l'utilisateur ('Période d'Analyse' et 'Pondération des Numéros') doivent influencer la manière dont vous pondérez les données historiques ou l'importance des caractéristiques dans votre simulation de Forêt Aléatoire.
 
 Sur la base de cette analyse complète et multi-facettes, veuillez fournir :
 1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage, chaque numéro étant compris entre 1 et 90.
-2.  reasoning: Une explication détaillée et professionnelle de la méthodologie. Articulez les schémas spécifiques, les informations statistiques, et les interprétations de modèles simulés (par exemple, "L'analyse séquentielle de type LSTM suggère...", "La pondération des caractéristiques de type XGBoost indique...", "L'analyse des caractéristiques dérivées comme les écarts moyens pointe vers...", "La considération des fréquences des numéros sur les 20 derniers tirages met en évidence...", "L'analyse des écarts pour le numéro X indique...", "Les moyennes mobiles des fréquences suggèrent une tendance pour le numéro Y...") qui ont conduit à votre sélection de chaque numéro prédit.
+2.  reasoning: Une explication détaillée et professionnelle de la méthodologie. Articulez les schémas spécifiques, les informations statistiques, et les interprétations de votre simulation de Forêt Aléatoire (par exemple, "L'analyse du délai moyen de réapparition suggère que le numéro Z est 'en retard'...", "La stratégie de multiplication par 1,615 appliquée au dernier tirage a mis en évidence le numéro Y'", "La combinaison des scores de fréquence et d'association a fortement favorisé le numéro X dans la Forêt Aléatoire simulée..."). Détaillez comment les caractéristiques telles que le délai moyen, la fréquence (absolue/relative), les associations (même tirage et tirage suivant), la transformation 'numéro + 20', la comparaison machine/gagnants, et la stratégie de multiplication par 1,615 ont été considérées et ont influencé la sélection des numéros prédits.
 3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 3/5).
-4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées, de la quantité et de la qualité des données historiques fournies, et de la prévisibilité historique apparente du tirage.
+4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées, de la quantité et de la qualité des données historiques fournies, et de la prévisibilité historique apparente du tirage, ainsi que de la convergence des différentes stratégies simulées.
 
 Produisez les résultats strictement au format JSON, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu.`,
 });
@@ -124,3 +130,4 @@ const generateDrawPredictionsFlow = ai.defineFlow(
     return output!;
   }
 );
+
