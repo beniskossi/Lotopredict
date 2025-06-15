@@ -103,7 +103,9 @@ interface InternalApiDrawResult {
   machine: number[];
 }
 
-// Fetches data from our internal /api/loto-results endpoint
+// Fetches data from our internal /api/loto-results endpoint, which acts as a proxy
+// to the external lottery data source (https://lotobonheur.ci/api/results).
+// This function is responsible for retrieving the raw, processed results from the external source.
 async function _fetchDataFromInternalApi(yearMonth?: string): Promise<Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]> {
   let url = '/api/loto-results';
   if (yearMonth) { // yearMonth expected as YYYY-MM
@@ -164,7 +166,8 @@ async function _fetchDataFromInternalApi(yearMonth?: string): Promise<Omit<Fires
   }
 }
 
-
+// Saves the draws (fetched from the external source via the internal API) into the Firestore database.
+// This function handles the "synchronization" part, ensuring Firestore is updated with the latest results.
 async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[]): Promise<void> {
   if (!draws || !draws.length) return;
 
@@ -278,17 +281,23 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
   }
   
   // If no date filter is applied (i.e., fetching latest) and it's the initial load for this view.
-  if (!year && !month && !startAfterDoc) { 
+  // This ensures the latest data from the external source is considered for synchronization.
+  if (!year && !month && !startAfterDoc) {
     // console.log(`LotoData: Initial load for ${canonicalDrawName}. Fetching latest from internal API for potential sync.`);
     try {
-      const newApiData = await _fetchDataFromInternalApi(); // Fetches LATEST general results
+      // Data is fetched from the internal API, which proxies the external source.
+      const newApiData = await _fetchDataFromInternalApi(); 
       if (newApiData.length > 0) {
+        // console.log(`LotoData: ${newApiData.length} new/updated results fetched from internal API for ${canonicalDrawName}. Synchronizing with Firestore.`);
+        // The fetched data is then saved/synchronized with Firestore.
         await _saveDrawsToFirestore(newApiData);
         // Re-fetch from Firestore after potential save to include new data and respect pagination
         firestoreQueryDocs = []; // Clear previous query results
         const querySnapshotAfterSync = await getDocs(q); // q is the original query with all constraints
         querySnapshotAfterSync.forEach(docSnap => firestoreQueryDocs.push(docSnap as QueryDocumentSnapshot<FirestoreDrawDoc>));
-        // console.log(`LotoData: Re-fetched ${firestoreQueryDocs.length} docs for ${canonicalDrawName} after internal API sync.`);
+        // console.log(`LotoData: Re-fetched ${firestoreQueryDocs.length} docs for ${canonicalDrawName} from Firestore after internal API sync.`);
+      } else {
+        // console.log(`LotoData: No new data from internal API for ${canonicalDrawName} during initial load sync.`);
       }
     } catch (apiError) {
       console.error(`LotoData: Error during internal API fetch or re-query for ${canonicalDrawName}:`, apiError);
