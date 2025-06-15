@@ -1,7 +1,8 @@
 
 'use server';
 /**
- * @fileOverview An AI agent that generates predictions for lottery draws.
+ * @fileOverview An AI agent that generates predictions for lottery draws
+ * by simulating an advanced ensemble of statistical models.
  *
  * - generateDrawPredictions - A function that generates lottery draw predictions.
  * - GenerateDrawPredictionsInput - The input type for the generateDrawPredictions function.
@@ -26,8 +27,8 @@ const GenerateDrawPredictionsInputSchema = z.object({
     .describe(
       'An array of historical lottery draw data objects used to generate predictions.'
     ),
-  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data"). This guides how much history is emphasized.'),
-  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends"). This influences the importance of recent vs. older data.'),
+  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data"). This guides how much history is emphasized by all simulated models.'),
+  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends"). This influences the importance of recent vs. older data in feature calculations for all simulated models.'),
 });
 export type GenerateDrawPredictionsInput = z.infer<typeof GenerateDrawPredictionsInputSchema>;
 
@@ -38,9 +39,9 @@ const GenerateDrawPredictionsOutputSchema = z.object({
     .describe('An array of 5 distinct predicted numbers for the lottery draw, each between 1 and 90.'),
   reasoning: z
     .string()
-    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should cover aspects like number frequency (considering windows like last 10, 20, 50 draws), recency (gaps between appearances), pairings, clusters, skip patterns, and any discerned temporal patterns (like moving averages of frequencies over 5, 10, 20 draws) or anomalies. It should also articulate simulated advanced model interpretations (e.g., "LSTM-like sequence analysis suggests...", "XGBoost-like feature weighting indicates..."). Explicitly mention how derived features like relative frequency over sliding windows, mean gaps between appearances, and moving averages of frequencies informed the prediction.'),
-  confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data and the depth of analysis performed.'),
-  confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence (e.g., clarity of patterns, amount of historical data, consistency of trends).'),
+    .describe('A detailed, professional explanation of the methodology and statistical insights used to derive the predictions. This should articulate how the simulated ensemble (DBN for transitions, Gradient Boosting for probabilities, Clustering for patterns) and the weighted combination of their outputs contributed to the selection. It should also cover how the validation table generation strategy informed the analysis, and how user-defined parameters (analysis period, number weighting) influenced the process.'),
+  confidenceScore: z.string().describe('A qualitative confidence level for the predictions (e.g., "High", "Medium", "Low", or a numeric score like 3/5). This should reflect the AI\'s assessment of the predictability based on the data and the depth of simulated analysis performed.'),
+  confidenceReasoning: z.string().describe('A brief explanation for the assigned confidence score, highlighting factors that increase or decrease confidence (e.g., clarity of simulated patterns from DBN/Clustering, convergence of simulated model outputs, amount of historical data).'),
 });
 export type GenerateDrawPredictionsOutput = z.infer<typeof GenerateDrawPredictionsOutputSchema>;
 
@@ -58,8 +59,8 @@ const PromptInputSchema = z.object({
     .describe(
       'A string representation of historical lottery draw data used to generate predictions.'
     ),
-  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on (e.g., "last 30 draws", "last 6 months", "all available data").'),
-  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency (e.g., "emphasize recent draws", "equal weight to all draws", "long-term trends").'),
+  analysisPeriod: z.string().optional().describe('The historical period to focus the analysis on.'),
+  numberWeighting: z.string().optional().describe('How to weigh numbers based on recency.'),
 });
 
 
@@ -67,7 +68,7 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `Vous êtes un système d'analyse de loterie expert. Votre rôle est de simuler une Forêt Aléatoire (Random Forest) pour générer des prédictions. Une Forêt Aléatoire combine les résultats de multiples arbres de décision, chacun entraîné sur différentes facettes des données et des caractéristiques, pour réduire le surapprentissage et améliorer la robustesse des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée pour le tirage spécifié, en expliquant comment les différentes stratégies et caractéristiques ont contribué à la décision finale, comme le ferait une Forêt Aléatoire.
+  prompt: `Vous êtes un système d'analyse de loterie expert simulant un ensemble avancé de modèles pour générer des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée pour le tirage spécifié, en expliquant comment les différentes composantes simulées de votre système ont contribué à la décision finale.
 
 Nom du Tirage : {{{drawName}}}
 Période d'Analyse Spécifiée par l'Utilisateur : {{#if analysisPeriod}} {{{analysisPeriod}}} {{else}} Non spécifié, considérez toutes les données fournies. {{/if}}
@@ -76,29 +77,45 @@ Pondération des Numéros Spécifiée par l'Utilisateur : {{#if numberWeighting}
 Données Historiques Fournies :
 {{{historicalData}}}
 
-Effectuez une analyse approfondie en simulant le calcul et l'utilisation des caractéristiques suivantes pour chaque numéro (1 à 90) :
-- Délai moyen avant réapparition : Calculez ou estimez le nombre moyen de tirages avant qu'un numéro réapparaisse. Identifiez les numéros qui sont statistiquement 'en retard' pour une réapparition.
-- Fréquence d'apparition : Comptez la fréquence absolue et relative de chaque numéro dans les tirages historiques fournis. Considérez des fenêtres glissantes si pertinent (par exemple, les 10, 20 derniers tirages).
-- Numéro le plus fréquent associé :
-    - Dans le même tirage : Identifiez les numéros qui apparaissent le plus souvent dans le même tirage qu'un numéro donné.
-    - Dans le tirage suivant : Analysez quel numéro a tendance à apparaître dans le tirage *suivant* un tirage où un numéro donné est sorti.
-- Numéro + 20 : Pour chaque numéro X apparu dans l'historique, considérez le numéro X+20 (s'il est ≤ 90). Évaluez la fréquence historique de ces numéros dérivés (X+20).
-- Comparaison numéros machines/gagnants : Si des numéros machine sont présents dans les données historiques, comparez la fréquence d'apparition des numéros en tant que 'numéro machine' par rapport à leur fréquence en tant que 'numéro gagnant'.
-- Multiplication par 1,615 : Pour chaque numéro Y du *dernier tirage fourni dans les données historiques*, calculez Y' = arrondir(Y * 1,615). Si Y' ≤ 90, évaluez la fréquence historique de Y' pour juger de sa pertinence.
+Votre système simulé est composé des algorithmes suivants :
 
-Mécanisme d'Apprentissage Simulé (Forêt Aléatoire) :
-Votre simulation de Forêt Aléatoire doit :
-1.  Calculer ou estimer l'importance de chaque caractéristique dérivée (délai moyen, fréquences diverses, associations, transformations comme +20 ou *1.615, corrélation machine/gagnants).
-2.  Simuler la construction de multiples arbres de décision, où chaque arbre pourrait se concentrer sur un sous-ensemble différent de ces caractéristiques ou de périodes de données.
-3.  Agréger les "votes" ou les scores de ces arbres simulés pour chaque numéro (1 à 90) afin d'obtenir un score de confiance global.
-4.  Expliquer comment vous avez pondéré ou combiné ces différentes stratégies (qui agissent comme des branches de décision ou des arbres individuels) pour arriver à vos prédictions.
-5.  Les paramètres fournis par l'utilisateur ('Période d'Analyse' et 'Pondération des Numéros') doivent influencer la manière dont vous pondérez les données historiques ou l'importance des caractéristiques dans votre simulation de Forêt Aléatoire.
+1.  **Réseau Bayésien Dynamique (DBN) Simulé pour les Motifs de Transition**
+    *   **Objectif Simulé** : Modéliser les dépendances temporelles entre les numéros tirés d’un tirage à l’autre, en capturant les transitions probables.
+    *   **Caractéristiques Simulées Considérées** : Probabilités conditionnelles des numéros basées sur les tirages précédents, transitions entre groupes de numéros (par plages ou unités), motifs de répétition (numéros apparaissant après certains écarts).
 
-Sur la base de cette analyse complète et multi-facettes, veuillez fournir :
+2.  **Gradient Boosting (type LightGBM) Simulé pour la Prédiction de Probabilité**
+    *   **Objectif Simulé** : Prédire la probabilité d’apparition de chaque numéro.
+    *   **Caractéristiques Simulées Considérées** : Fréquence historique des numéros, écarts entre apparitions, co-occurrences, sommes des numéros tirés, plages et unités des numéros, caractéristiques dérivées (moyenne des écarts).
+
+3.  **Modèle de Clustering Simulé pour Identifier les Motifs de Tirages**
+    *   **Objectif Simulé** : Regrouper les tirages similaires pour identifier des profils de tirages et prédire les numéros probables dans des contextes similaires.
+    *   **Caractéristiques Simulées Considérées** : Composition des numéros (plages, unités), sommes des numéros, différences internes entre numéros, écarts temporels.
+
+4.  **Modèle d’Ensemble Pondéré Simulé**
+    *   **Objectif Simulé** : Combiner les "prédictions" (scores ou probabilités) des trois modèles simulés (DBN, Gradient Boosting, Clustering) pour améliorer la robustesse.
+    *   **Méthodologie Simulée** : Attribuer des poids à chaque modèle simulé en fonction de la force perçue de ses signaux dans les données historiques fournies. Calculer un score agrégé pour chaque numéro.
+
+5.  **Génération d'un Tableau de Validation (Analyse Contextuelle)**
+    *   **Objectif** : Générer un tableau dérivé des numéros gagnants du dernier tirage pour valider ou contextualiser les prédictions.
+    *   **Stratégie** :
+        *   Première ligne : Ajouter une constante (par exemple, +1 ou une autre petite valeur) aux numéros gagnants du dernier tirage, ajuster si > 90.
+        *   Lignes suivantes : Répéter l’opération sur la ligne précédente (jusqu'à quelques lignes).
+        *   Vérification contextuelle : Noter si les numéros prédits par l'ensemble apparaissent dans ce tableau. Analyser les paires (consécutives dans lignes/colonnes/diagonales) pour un contexte supplémentaire. Ceci n'est pas un filtre strict mais un outil d'analyse.
+
+Mécanisme d'Apprentissage et de Prédiction Simulé :
+1.  Analysez les données historiques fournies.
+2.  Pour chaque numéro (1 à 90), simulez le calcul des caractéristiques pertinentes pour le DBN, le Gradient Boosting, et le Clustering.
+3.  Simulez l'obtention de scores ou de probabilités de chaque modèle pour chaque numéro.
+4.  Appliquez une simulation de pondération et d'agrégation (Modèle d'Ensemble Pondéré) pour obtenir un score de confiance final pour chaque numéro.
+5.  Les paramètres 'Période d'Analyse' et 'Pondération des Numéros' doivent influencer la manière dont vous considérez les données historiques ou l'importance des caractéristiques dans vos simulations.
+6.  Sélectionnez les 5 numéros avec les scores agrégés les plus élevés, en assurant leur unicité et en appliquant des contraintes de distribution raisonnables (par exemple, diversité des plages si les signaux le suggèrent).
+7.  Simulez la génération du tableau de validation basé sur le dernier tirage fourni pour une analyse contextuelle.
+
+Sur la base de cette analyse complète et multi-facettes simulée, veuillez fournir :
 1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage, chaque numéro étant compris entre 1 et 90.
-2.  reasoning: Une explication détaillée et professionnelle de la méthodologie. Articulez les schémas spécifiques, les informations statistiques, et les interprétations de votre simulation de Forêt Aléatoire (par exemple, "L'analyse du délai moyen de réapparition suggère que le numéro Z est 'en retard'...", "La stratégie de multiplication par 1,615 appliquée au dernier tirage a mis en évidence le numéro Y'", "La combinaison des scores de fréquence et d'association a fortement favorisé le numéro X dans la Forêt Aléatoire simulée..."). Détaillez comment les caractéristiques telles que le délai moyen, la fréquence (absolue/relative), les associations (même tirage et tirage suivant), la transformation 'numéro + 20', la comparaison machine/gagnants, et la stratégie de multiplication par 1,615 ont été considérées et ont influencé la sélection des numéros prédits.
+2.  reasoning: Une explication détaillée et professionnelle de la méthodologie simulée. Articulez comment les informations simulées des modèles DBN, Gradient Boosting, et Clustering, ainsi que leur combinaison pondérée, ont conduit à la sélection des numéros. Mentionnez comment le tableau de validation a été utilisé pour l'analyse contextuelle. Expliquez l'impact des paramètres utilisateur ('Période d'Analyse', 'Pondération des Numéros') sur votre simulation.
 3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 3/5).
-4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées, de la quantité et de la qualité des données historiques fournies, et de la prévisibilité historique apparente du tirage, ainsi que de la convergence des différentes stratégies simulées.
+4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées par vos simulations, de la convergence des "résultats" des différents modèles simulés, et de la quantité/qualité des données historiques.
 
 Produisez les résultats strictement au format JSON, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu.`,
 });
