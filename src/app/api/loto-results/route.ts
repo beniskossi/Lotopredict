@@ -1,6 +1,6 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { parse, format, getYear as dateFnsGetYear, isValid as isDateValid, setYear as dateFnsSetYear, isFuture } from 'date-fns';
+import { parse, format, getYear as dateFnsGetYear, isValid as isDateValid, setYear as dateFnsSetYear, isFuture, getMonth as dateFnsGetMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx'; // Using the existing draw schedule
 
@@ -131,23 +131,24 @@ export async function GET(request: NextRequest) {
           const dayMonth = dateParts.length > 1 ? dateParts[1] : dateParts[0]; // "04/05"
           const [dayStr, monthStr] = dayMonth.split('/');
           const day = parseInt(dayStr, 10);
-          const month = parseInt(monthStr, 10) -1; // month is 0-indexed for Date constructor
+          const monthIdx = parseInt(monthStr, 10) -1; // month is 0-indexed for Date constructor
 
-          if (isNaN(day) || isNaN(month) || month < 0 || month > 11 || day < 1 || day > 31) {
+          if (isNaN(day) || isNaN(monthIdx) || monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) {
             console.warn(`LotoPredict API Route: Invalid day/month parsed from API date: ${apiDateStr}`);
             continue;
           }
           
           let yearToUse = targetYear; // Use year from ?month=YYYY-MM if provided
           if (!yearToUse) { // If no month query, infer from current year
-            yearToUse = currentActualYear;
-            let tempDate = new Date(yearToUse, month, day);
-            if (isDateValid(tempDate) && isFuture(tempDate) && tempDate > new Date()) { 
+            yearToUse = currentActualYear; 
+            const currentActualMonth = dateFnsGetMonth(new Date()); // 0-indexed
+            // If API month is much later in the year than current month (e.g. current Jan, API Dec), assume previous year.
+            if (monthIdx > currentActualMonth && (monthIdx - currentActualMonth > 6) ) { 
                  yearToUse = currentActualYear - 1;
             }
           }
           
-          const parsedDate = new Date(yearToUse, month, day);
+          const parsedDate = new Date(yearToUse, monthIdx, day);
           if (!isDateValid(parsedDate)) {
             console.warn(`LotoPredict API Route: Constructed invalid date for: ${apiDateStr} with year ${yearToUse}`);
             continue;
@@ -192,3 +193,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error while processing lottery results.', details: error.message }, { status: 500 });
   }
 }
+
+    

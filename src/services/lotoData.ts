@@ -1,7 +1,7 @@
 
 import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput } from '@/types/loto';
 import { DRAW_SCHEDULE, ALL_DRAW_NAMES_MAP, DRAW_SLUG_BY_SIMPLE_NAME_MAP, getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
-import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture, getMonth, formatISO } from 'date-fns';
+import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture, getMonth as dateFnsGetMonth, formatISO } from 'date-fns';
 import fr from 'date-fns/locale/fr';
 import { auth, db } from '@/lib/firebase';
 import {
@@ -277,16 +277,16 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
     console.error(`LotoData: Error fetching draws for ${canonicalDrawName} (slug: ${drawSlug}) from Firestore:`, error);
   }
   
-  // If no date filter is applied (i.e., fetching latest) and Firestore is empty or has few results, try fetching from API
-  if (!year && !month && !startAfterDoc && firestoreQueryDocs.length < pageSize) {
-    // console.log(`LotoData: Insufficient data for ${canonicalDrawName} in Firestore on initial load. Fetching from internal API.`);
+  // If no date filter is applied (i.e., fetching latest) and it's the initial load for this view.
+  if (!year && !month && !startAfterDoc) { 
+    // console.log(`LotoData: Initial load for ${canonicalDrawName}. Fetching latest from internal API for potential sync.`);
     try {
-      const newApiData = await _fetchDataFromInternalApi(); // Fetch latest general results
+      const newApiData = await _fetchDataFromInternalApi(); // Fetches LATEST general results
       if (newApiData.length > 0) {
         await _saveDrawsToFirestore(newApiData);
-        // Re-fetch from Firestore after potential save
-        firestoreQueryDocs = [];
-        const querySnapshotAfterSync = await getDocs(q);
+        // Re-fetch from Firestore after potential save to include new data and respect pagination
+        firestoreQueryDocs = []; // Clear previous query results
+        const querySnapshotAfterSync = await getDocs(q); // q is the original query with all constraints
         querySnapshotAfterSync.forEach(docSnap => firestoreQueryDocs.push(docSnap as QueryDocumentSnapshot<FirestoreDrawDoc>));
         // console.log(`LotoData: Re-fetched ${firestoreQueryDocs.length} docs for ${canonicalDrawName} after internal API sync.`);
       }
@@ -323,6 +323,8 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
     const existingEntry = contentSignatureMap.get(contentSignature);
     if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
         contentSignatureMap.set(contentSignature, doc);
+    } else if (existingEntry && yearNum === getYear(parseISO(existingEntry.date)) && doc.fetchedAt && existingEntry.fetchedAt && doc.fetchedAt.toMillis() > existingEntry.fetchedAt.toMillis()){
+        contentSignatureMap.set(contentSignature, doc); // Prefer more recently fetched for same content
     }
   });
 
@@ -441,6 +443,8 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
     const existingEntry = contentSignatureMap.get(contentSignature);
     if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
         contentSignatureMap.set(contentSignature, doc);
+    } else if (existingEntry && yearNum === getYear(parseISO(existingEntry.date)) && doc.fetchedAt && existingEntry.fetchedAt && doc.fetchedAt.toMillis() > existingEntry.fetchedAt.toMillis()){
+        contentSignatureMap.set(contentSignature, doc); // Prefer more recently fetched for same content
     }
   });
 
@@ -466,6 +470,13 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
   });
 };
 
+export interface NumberCoOccurrence {
+  selectedNumber: number;
+  coOccurrences: Array<{
+    number: number;
+    count: number;
+  }>;
+}
 
 export async function fetchNumberCoOccurrence(drawSlug: string, selectedNumber: number, data?: HistoricalDataEntry[]): Promise<NumberCoOccurrence> {
   const historicalData = data || await fetchHistoricalData(drawSlug, MAX_HISTORICAL_FETCH_LIMIT);
@@ -538,6 +549,8 @@ export const fetchRecentLottoResults = async (count: number = 20): Promise<Fires
     const existingEntry = contentSignatureMap.get(contentSignature);
     if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
         contentSignatureMap.set(contentSignature, doc);
+    } else if (existingEntry && yearNum === getYear(parseISO(existingEntry.date)) && doc.fetchedAt && existingEntry.fetchedAt && doc.fetchedAt.toMillis() > existingEntry.fetchedAt.toMillis()){
+        contentSignatureMap.set(contentSignature, doc); // Prefer more recently fetched for same content
     }
   });
 
@@ -590,6 +603,8 @@ export const fetchAllLottoResultsForExport = async (): Promise<FirestoreDrawDoc[
     const existingEntry = contentSignatureMap.get(contentSignature);
     if (!existingEntry || yearNum > getYear(parseISO(existingEntry.date))) {
         contentSignatureMap.set(contentSignature, doc);
+    } else if (existingEntry && yearNum === getYear(parseISO(existingEntry.date)) && doc.fetchedAt && existingEntry.fetchedAt && doc.fetchedAt.toMillis() > existingEntry.fetchedAt.toMillis()){
+        contentSignatureMap.set(contentSignature, doc); // Prefer more recently fetched for same content
     }
   });
   
@@ -651,3 +666,5 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
   }
   await setDoc(docRef, dataToSave, {merge: true});
 }
+
+    
