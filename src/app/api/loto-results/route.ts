@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
           'Accept': 'application/json',
           'Referer': 'https://lotobonheur.ci/resultats',
         },
-        // cache: 'no-store', // Ensure fresh data for API route
+        cache: 'no-store', // Ensure fresh data for API route
       });
     } catch (fetchError: any) {
       console.error(`LotoPredict API Route: External API fetch to ${externalApiUrl} failed directly:`, fetchError);
