@@ -1,7 +1,6 @@
-
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
@@ -17,10 +16,36 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
 };
 
+// Validate that the essential Firebase config variables are present.
+// This provides a clearer error message during development if the .env file is missing.
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  throw new Error(
+    'Firebase configuration is missing. Please check your .env file and ensure NEXT_PUBLIC_FIREBASE_API_KEY and NEXT_PUBLIC_FIREBASE_PROJECT_ID are set.'
+  );
+}
+
 // Initialize Firebase
 // This ensures Firebase is initialized only once.
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Enable offline persistence for Firestore. This is a good practice for PWAs.
+// It helps the app function when offline and can mitigate some "client is offline" errors.
+try {
+  enableIndexedDbPersistence(db)
+    .catch((err) => {
+      if (err.code == 'failed-precondition') {
+        // This can happen if multiple tabs are open. Persistence is only enabled in one.
+        // It's a warning, not a critical error.
+        console.warn('Firestore persistence failed to enable. This can happen if you have multiple tabs of this app open.');
+      } else if (err.code == 'unimplemented') {
+        // The browser does not support all features required for persistence.
+        console.warn('Firestore persistence is not supported in this browser.');
+      }
+    });
+} catch (error) {
+    console.error("An error occurred while trying to enable Firestore persistence:", error);
+}
 
 export { app, db, auth };
