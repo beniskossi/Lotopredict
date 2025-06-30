@@ -6,7 +6,7 @@
  *
  * - generateDrawPredictions - A function that generates lottery draw predictions.
  * - GenerateDrawPredictionsInput - The input type for the generateDrawPredictions function.
- * - GenerateDrawPredictionsOutput - The return type for the generateDrawPredictions function.
+ * - GenerateDrawPredictionsOutput - The return type for the generateDrawpredictions function.
  */
 
 import {ai} from '@/ai/genkit';
@@ -130,7 +130,7 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `Vous êtes un système expert en analyse de loterie simulant un modèle de Forêt Aléatoire (Random Forest) pour générer des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée, expliquant comment les différentes caractéristiques statistiques ont influencé la décision finale du modèle simulé.
+  prompt: `Vous êtes un système expert en analyse de loterie, simulant une **approche hybride avancée** pour générer des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée, en expliquant comment les différents modèles simulés ont contribué à la décision finale.
 
 Nom du Tirage : {{{drawName}}}
 Période d'Analyse Spécifiée par l'Utilisateur : {{#if analysisPeriod}} {{{analysisPeriod}}} {{else}} Non spécifié, considérez toutes les données fournies. {{/if}}
@@ -139,27 +139,31 @@ Pondération des Numéros Spécifiée par l'Utilisateur : {{#if numberWeighting}
 Données Historiques Fournies :
 {{{historicalData}}}
 
-Votre simulation de Forêt Aléatoire est entraînée sur la base des caractéristiques suivantes, calculées pour chaque numéro (de 1 à 90) :
+Votre analyse est basée sur une simulation de trois modèles d'apprentissage automatique, dont les résultats sont combinés dans une approche d'ensemble :
 
-1.  **Délai moyen avant réapparition** : Le nombre moyen de tirages qu'il faut à un numéro pour réapparaître après sa dernière sortie. Ceci permet d'identifier les numéros potentiellement "en retard".
-2.  **Fréquence d'apparition** : La fréquence absolue (nombre total d'apparitions) de chaque numéro dans les données historiques fournies.
-3.  **Numéro le plus fréquent associé** : Pour un numéro donné, identifier le numéro qui est apparu le plus souvent dans le même tirage que lui.
-4.  **Stratégie "Numéro + 20"** : Pour chaque numéro, calculer la fréquence de sa contrepartie "numéro + 20" (si le résultat est inférieur ou égal à 90) dans les tirages passés.
-5.  **Corrélation Machine/Gagnants** : Si des numéros "machine" sont fournis, analyser la fréquence à laquelle un numéro apparaît en tant que numéro machine par rapport à sa fréquence en tant que numéro gagnant.
-6.  **Stratégie de Multiplication par 1,615 (Ratio d'Or)** : Pour chaque numéro du dernier tirage, le multiplier par 1,615, arrondir à l'entier le plus proche, et si le résultat est inférieur ou égal à 90, considérer la fréquence historique de ce numéro dérivé comme une caractéristique.
+1.  **Simulation de XGBoost :**
+    *   **Objectif :** Analyser en profondeur la fréquence et les écarts (le nombre de tirages entre les apparitions) de chaque numéro.
+    *   **Caractéristiques simulées :** Fréquence absolue, fréquence relative, écart moyen, écart maximum, écart actuel depuis la dernière apparition. Ce modèle est particulièrement efficace pour quantifier l'importance de chaque numéro pris individuellement.
 
-Mécanisme d'Apprentissage et de Prédiction Simulé (Forêt Aléatoire) :
+2.  **Simulation de Forêt Aléatoire (Random Forest) :**
+    *   **Objectif :** Valider les interactions complexes et les co-occurrences entre les numéros.
+    *   **Caractéristiques simulées :** Paires de numéros fréquentes, triplets, et autres associations non linéaires. Ce modèle identifie les groupes de numéros qui ont tendance à apparaître ensemble.
+
+3.  **Simulation de Réseau de Neurones Récurrent (RNN-LSTM) :**
+    *   **Objectif :** Détecter les tendances et les séquences temporelles dans les tirages.
+    *   **Caractéristiques simulées :** Analyse des séquences de tirages pour identifier des motifs périodiques, des tendances à la hausse ou à la baisse dans la fréquence de certains numéros ou groupes de numéros.
+
+**Mécanisme de Prédiction Hybride Simulé :**
 1.  Analysez les données historiques fournies.
-2.  Pour chaque numéro (1 à 90), simulez le calcul de toutes les caractéristiques décrites ci-dessus.
-3.  Simulez un entraînement de multiples arbres de décision, chacun sur un sous-ensemble aléatoire des données et des caractéristiques. Les paramètres utilisateur ('Période d'Analyse', 'Pondération des Numéros') influencent l'importance (le poids) accordée à certaines caractéristiques ou à certaines parties des données.
-4.  À partir de cet ensemble d'arbres simulé, obtenez un score de confiance agrégé pour chaque numéro.
-5.  Sélectionnez les 5 numéros avec les scores agrégés les plus élevés, en vous assurant qu'ils sont uniques.
+2.  Pour chaque numéro (1 à 90), simulez l'évaluation par chacun des trois modèles (XGBoost, Random Forest, RNN-LSTM) pour générer un score partiel.
+3.  Calculez un **score de confiance global** pour chaque numéro en agrégeant les scores partiels. Le poids de chaque modèle dans l'agrégation peut varier en fonction des paramètres utilisateur (par exemple, "Privilégier les récents" pourrait donner plus de poids au modèle RNN-LSTM).
+4.  Sélectionnez les 5 numéros avec les scores de confiance globaux les plus élevés, en vous assurant qu'ils sont uniques.
 
-Sur la base de cette analyse complète et multi-facettes simulée, veuillez fournir :
-1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage, chaque numéro étant compris entre 1 et 90.
-2.  reasoning: Une explication détaillée et professionnelle de la méthodologie simulée. Articulez comment l'analyse des caractéristiques (fréquence, délais, associations, +20, multiplication par 1,615, etc.) et le processus de décision de la Forêt Aléatoire simulée ont conduit à la sélection des numéros. Expliquez l'impact des paramètres utilisateur sur votre simulation.
-3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 3/5).
-4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en tenant compte de la clarté des tendances identifiées par vos simulations et de la convergence des "résultats" des différentes caractéristiques.
+Sur la base de cette analyse multi-modèles simulée, veuillez fournir :
+1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage.
+2.  reasoning: Une explication détaillée de la méthodologie hybride simulée. Articulez comment chaque modèle (XGBoost pour les fréquences/écarts, Random Forest pour les interactions, RNN-LSTM pour les tendances) a contribué à la sélection finale et comment les paramètres utilisateur ont influencé les poids relatifs de ces modèles.
+3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 4/5).
+4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en vous basant sur la convergence (ou la divergence) des résultats des trois modèles simulés.
 
 Produisez les résultats strictement au format JSON, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu.`,
 });
@@ -191,5 +195,3 @@ const generateDrawPredictionsFlow = ai.defineFlow(
     return output!;
   }
 );
-
-
