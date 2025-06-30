@@ -1,7 +1,7 @@
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
-import { parse } from 'date-fns';
+import { type NextRequest, NextResponse } from 'next/server';
+import { format, parse as dateFnsParse, isValid, getYear, getMonth as dateFnsGetMonth } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 // Define interfaces for type safety
 interface DrawResult {
@@ -33,160 +33,126 @@ interface ResultsData {
   success: boolean;
 }
 
-// Draw schedule for standard draws
+// Draw schedule for standard draws from the external API
 const DRAW_SCHEDULE: { [key: string]: { [key: string]: string } } = {
-  Lundi: {
-    '10H': 'Reveil',
-    '13H': 'Etoile',
-    '16H': 'Akwaba',
-    '18H15': 'Monday Special',
-  },
-  Mardi: {
-    '10H': 'La Matinale',
-    '13H': 'Emergence',
-    '16H': 'Sika',
-    '18H15': 'Lucky Tuesday',
-  },
-  Mercredi: {
-    '10H': 'Premiere Heure',
-    '13H': 'Fortune',
-    '16H': 'Baraka',
-    '18H15': 'Midweek',
-  },
-  Jeudi: {
-    '10H': 'Kado',
-    '13H': 'Privilege',
-    '16H': 'Monni',
-    '18H15': 'Fortune Thursday',
-  },
-  Vendredi: {
-    '10H': 'Cash',
-    '13H': 'Solution',
-    '16H': 'Wari',
-    '18H15': 'Friday Bonanza',
-  },
-  Samedi: {
-    '10H': 'Soutra',
-    '13H': 'Diamant',
-    '16H': 'Moaye',
-    '18H15': 'National',
-  },
-  Dimanche: {
-    '10H': 'Benediction',
-    '13H': 'Prestige',
-    '16H': 'Awale',
-    '18H15': 'Espoir',
-  },
+  Lundi: { '10H': 'Reveil', '13H': 'Etoile', '16H': 'Akwaba', '18H15': 'Monday Special' },
+  Mardi: { '10H': 'La Matinale', '13H': 'Emergence', '16H': 'Sika', '18H15': 'Lucky Tuesday' },
+  Mercredi: { '10H': 'Premiere Heure', '13H': 'Fortune', '16H': 'Baraka', '18H15': 'Midweek' },
+  Jeudi: { '10H': 'Kado', '13H': 'Privilege', '16H': 'Monni', '18H15': 'Fortune Thursday' },
+  Vendredi: { '10H': 'Cash', '13H': 'Solution', '16H': 'Wari', '18H15': 'Friday Bonanza' },
+  Samedi: { '10H': 'Soutra', '13H': 'Diamant', '16H': 'Moaye', '18H15': 'National' },
+  Dimanche: { '10H': 'Benediction', '13H': 'Prestige', '16H': 'Awale', '18H15': 'Espoir' },
 };
 
-// API route handler
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const month = req.query.month as string; // e.g., "mai-2025"
+// API route handler using App Router syntax
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const month = searchParams.get('month'); // e.g., "YYYY-MM"
+  
   const baseUrl = 'https://lotobonheur.ci/api/results';
-  const url = month ? `${baseUrl}?month=${month}` : baseUrl;
+  let url = baseUrl;
+
+  // Adapt the YYYY-MM format from lotoData.ts to the format expected by the external API (e.g., juin-2024)
+  if (month) {
+    const monthParts = month.split('-');
+    if (monthParts.length === 2 && !isNaN(parseInt(monthParts[0])) && !isNaN(parseInt(monthParts[1]))) {
+      const year = parseInt(monthParts[0]);
+      const monthIndex = parseInt(monthParts[1]) - 1;
+      const monthName = format(new Date(year, monthIndex), 'MMMM', { locale: fr }).toLowerCase();
+      url = `${baseUrl}?month=${monthName}-${year}`;
+    } else {
+      url = `${baseUrl}?month=${month}`; // Assume it's already in the 'monthName-YYYY' format
+    }
+  }
 
   try {
-    // Fetch the API directly
-    const response = await axios.get(url, {
+    const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
         'Referer': 'https://lotobonheur.ci/resultats',
       },
-      timeout: 10000, // 10 seconds timeout
+      cache: 'no-store' // Ensure we always get fresh data from the external source
     });
 
-    // Parse JSON response
-    const resultsData: ResultsData = response.data;
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`Error from external API ${url}. Status: ${response.status}, Body: ${errorBody}`);
+        return NextResponse.json({ error: 'Failed to fetch results from external API', details: errorBody }, { status: response.status });
+    }
+
+    const resultsData: ResultsData = await response.json();
     if (!resultsData.success) {
-      return res.status(500).json({ error: 'API returned unsuccessful response' });
+      return NextResponse.json({ error: 'API returned unsuccessful response' }, { status: 500 });
     }
 
-    const drawsResultsWeekly = resultsData.drawsResultsWeekly;
-    if (!drawsResultsWeekly) {
-      // Handle cases where drawsResultsWeekly might be missing, even if success is true
-      console.warn('API response successful but drawsResultsWeekly is missing.');
-      return res.status(200).json([]); // Return empty array or appropriate response
-    }
+    const drawsResultsWeekly = resultsData.drawsResultsWeekly || [];
 
-
-    // Valid draw names
     const validDrawNames = new Set<string>();
     Object.values(DRAW_SCHEDULE).forEach((day) => {
       Object.values(day).forEach((drawName) => validDrawNames.add(drawName));
     });
 
     const results: DrawResult[] = [];
+    const currentYear = getYear(new Date());
+    const currentMonthIndex = dateFnsGetMonth(new Date());
 
-    // Process draw results
     for (const week of drawsResultsWeekly) {
-      if (!week.drawResultsDaily) continue; // Skip if a week has no daily results
+      if (!week.drawResultsDaily) continue;
       for (const dailyResult of week.drawResultsDaily) {
         const dateStr = dailyResult.date;
         let drawDate: string;
 
         try {
-          // Parse date (e.g., "dimanche 04/05" to "2025-05-04")
-          // This part has a hardcoded year "2025", which needs to be addressed for other years.
           const dateParts = dateStr.split(' ');
-          const dayMonth = dateParts.length > 1 ? dateParts[1] : dateParts[0]; // "04/05"
-          const [day, monthStr] = dayMonth.split('/');
-          const parsedDate = parse(`${day}/${monthStr}/2025`, 'dd/MM/yyyy', new Date()); // HARDCODED YEAR
+          const dayMonth = dateParts.length > 1 ? dateParts[1] : dateParts[0];
+          const [dayStr, monthStr] = dayMonth.split('/');
+          const day = parseInt(dayStr);
+          const monthIndex = parseInt(monthStr) - 1;
+          
+          let yearToUse = currentYear;
+          if (currentMonthIndex < 3 && monthIndex > 8) { // Heuristic for year transition
+              yearToUse = currentYear - 1;
+          }
+          
+          const parsedDate = dateFnsParse(`${day}/${monthIndex + 1}/${yearToUse}`, 'd/M/yyyy', new Date());
+          if (!isValid(parsedDate)) continue;
           drawDate = parsedDate.toISOString().split('T')[0];
         } catch (e) {
-          console.warn(`Invalid date format: ${dateStr}, error: ${e}`);
           continue;
         }
 
-        // Process standard draws
         if (dailyResult.drawResults && dailyResult.drawResults.standardDraws) {
           for (const draw of dailyResult.drawResults.standardDraws) {
             const drawName = draw.drawName ? draw.drawName.trim() : "";
             if (!drawName || !validDrawNames.has(drawName) || (draw.winningNumbers && draw.winningNumbers.startsWith('.'))) {
-              continue; // Skip invalid or placeholder draws
+              continue;
             }
 
-            // Parse numbers
-            const winningNumbers = draw.winningNumbers
-              ?.match(/\d+/g)
-              ?.map(Number)
-              .slice(0, 5) || [];
-            const machineNumbers = draw.machineNumbers
-              ?.match(/\d+/g)
-              ?.map(Number)
-              .slice(0, 5) || [];
+            const winningNumbers = draw.winningNumbers?.match(/\d+/g)?.map(Number).slice(0, 5) || [];
+            const machineNumbers = draw.machineNumbers?.match(/\d+/g)?.map(Number).slice(0, 5) || [];
 
-            // Validate data - ensure 5 winning numbers, machine numbers can be empty or 5
-            if (winningNumbers.length === 5 && (machineNumbers.length === 0 || machineNumbers.length === 5)) {
+            if (winningNumbers.length === 5) {
               results.push({
                 draw_name: drawName,
                 date: drawDate,
                 gagnants: winningNumbers,
-                machine: machineNumbers.length === 5 ? machineNumbers : [], // Store empty array if not 5
+                machine: machineNumbers.length === 5 ? machineNumbers : [],
               });
-            } else {
-              // console.warn(`Incomplete data for draw ${drawName} on ${drawDate}: WN-${winningNumbers.length}, MN-${machineNumbers.length}`);
             }
           }
         }
       }
     }
 
-    if (results.length === 0 && month) { // Only return 404 if a specific month was requested and no data found
-      return res.status(404).json({ error: 'No valid draw results found for the specified period.' });
+    if (results.length === 0 && month) {
+      return NextResponse.json({ error: 'No valid draw results found for the specified period.' }, { status: 404 });
     }
 
-    return res.status(200).json(results);
+    return NextResponse.json(results);
+
   } catch (error: any) {
-    if (axios.isAxiosError(error)) {
-      console.error(`Axios error fetching ${url}: ${error.message}`, error.toJSON());
-      if (error.response) {
-        return res.status(error.response.status).json({ error: 'Failed to fetch results from external API', details: error.response.data });
-      } else if (error.request) {
-        return res.status(503).json({ error: 'No response from external API. Service might be unavailable.' });
-      }
-    }
     console.error(`Generic error fetching ${url}:`, error);
-    return res.status(500).json({ error: 'Failed to fetch results due to an internal server error.' });
+    return NextResponse.json({ error: 'Failed to fetch results due to an internal server error.' }, { status: 500 });
   }
 }
