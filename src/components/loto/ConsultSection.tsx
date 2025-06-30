@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchNumberCoOccurrence, fetchHistoricalData } from '@/services/lotoData';
 import type { NumberCoOccurrence as NumberCoOccurrenceType, HistoricalDataEntry } from '@/types/loto';
-import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
+import { getDrawNameBySlug } from '@/lib/lotoDraws.ts';
 import { LotoBall } from './LotoBall';
 import { Search, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";

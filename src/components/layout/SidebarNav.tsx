@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -5,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { DRAW_SCHEDULE } from '@/lib/lotoDraws';
+import { DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
 import { cn } from '@/lib/utils';
 import { ChevronRight } from 'lucide-react';
 

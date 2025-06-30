@@ -10,7 +10,7 @@ import { LotoBall } from "./LotoBall";
 import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type GenerateDrawPredictionsInput, type HistoricalEntry } from '@/ai/flows/generate-draw-predictions';
 import { fetchHistoricalData, savePredictionFeedback } from '@/services/lotoData';
 import type { HistoricalDataEntry } from '@/types/loto';
-import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
+import { getDrawNameBySlug } from '@/lib/lotoDraws.ts';
 import { Wand2, Loader2, HelpCircle, Info, ThumbsUp, ThumbsDown, CheckCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

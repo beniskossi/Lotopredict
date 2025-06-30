@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchHistoricalData } from '@/services/lotoData';
 import type { NumberFrequency as NumberFrequencyType, HistoricalDataEntry } from '@/types/loto';
-import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
+import { getDrawNameBySlug } from '@/lib/lotoDraws.ts';
 import { LotoBall } from './LotoBall';
 import { Button } from '../ui/button';
 import { RefreshCw, CalendarIcon, Search, Download } from 'lucide-react';

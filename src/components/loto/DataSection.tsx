@@ -9,7 +9,7 @@ import { LotoBall } from "./LotoBall";
 import { fetchDrawData, type FetchDrawDataParams, type FetchDrawDataResult } from '@/services/lotoData';
 import type { DrawResult, FirestoreDrawDoc } from '@/types/loto';
 import { RefreshCw, ExternalLink, ChevronDown, CalendarDays } from 'lucide-react';
-import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
+import { getDrawNameBySlug } from '@/lib/lotoDraws.ts';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { ScrollArea } from '../ui/scroll-area';
