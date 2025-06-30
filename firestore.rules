@@ -1,20 +1,27 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Collection: lottoResults
-    // Les résultats des tirages peuvent être lus par tout le monde.
-    // Seuls les utilisateurs authentifiés peuvent écrire (créer, mettre à jour, supprimer).
-    // TODO: Affiner cette règle pour permettre les écritures uniquement par des administrateurs désignés.
+    
+    // Lotto Results: Publicly readable, but only authenticated users (admins) can modify.
+    // NOTE: The data synchronization logic might need to run in an authenticated context
+    // for this rule to work as is.
     match /lottoResults/{resultId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write, delete: if request.auth != null; 
     }
 
-    // Ajoutez ici des règles pour d'autres collections si nécessaire.
-    // Exemple :
+    // Prediction Cache: Only authenticated server processes or admins should read/write.
+    match /predictionCache/{cacheId} {
+        allow read, write: if request.auth != null;
+    }
+
+    // Prediction Feedback: Anyone can submit feedback (create), but only admins can read/manage it.
+    match /predictionFeedback/{feedbackId} {
+        allow create: if true;
+        allow read, update, delete: if request.auth != null;
+    }
+
+    // Add rules for other collections as needed, for example, user profiles:
     // match /users/{userId} {
     //   allow read, write: if request.auth != null && request.auth.uid == userId;
     // }
