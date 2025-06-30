@@ -8,11 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LotoBall } from "./LotoBall";
 import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type GenerateDrawPredictionsInput, type HistoricalEntry } from '@/ai/flows/generate-draw-predictions';
-import { fetchHistoricalData } from '@/services/lotoData';
+import { fetchHistoricalData, savePredictionFeedback } from '@/services/lotoData';
 import type { HistoricalDataEntry } from '@/types/loto';
-// import { formatHistoricalDataForAI } from '@/lib/lotoUtils'; // No longer needed here
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
-import { Wand2, Loader2, HelpCircle, Info } from 'lucide-react';
+import { Wand2, Loader2, HelpCircle, Info, ThumbsUp, ThumbsDown, CheckCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from '../ui/scroll-area';
@@ -49,6 +48,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
 
   const [analysisPeriod, setAnalysisPeriod] = useState<string>(analysisPeriodOptions[1].value);
   const [numberWeighting, setNumberWeighting] = useState<string>(numberWeightingOptions[0].value);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   const drawNameDisplay = getDrawNameBySlug(drawSlug);
 
@@ -127,6 +127,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     setIsLoading(true);
     setError(null);
     setPredictions(null);
+    setFeedbackSent(false); // Reset feedback state for new prediction
 
     try {
       // Map rawHistoricalEntries to the structure expected by the Genkit flow
@@ -159,6 +160,35 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFeedback = async (feedback: 'relevant' | 'not_relevant') => {
+    if (!predictions) return;
+    setFeedbackSent(true); // Disable buttons immediately
+
+    try {
+      await savePredictionFeedback({
+        drawSlug: drawSlug,
+        predictions: predictions.predictions,
+        reasoning: predictions.reasoning,
+        confidenceScore: predictions.confidenceScore,
+        confidenceReasoning: predictions.confidenceReasoning,
+        analysisPeriodUsed: analysisPeriodOptions.find(opt => opt.value === analysisPeriod)?.label,
+        numberWeightingUsed: numberWeightingOptions.find(opt => opt.value === numberWeighting)?.label,
+        feedback: feedback,
+      });
+      toast({
+        title: "Merci !",
+        description: "Votre avis a été enregistré avec succès.",
+      });
+    } catch (error) {
+      setFeedbackSent(false); // Re-enable buttons on error
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible d'enregistrer votre avis pour le moment.",
+      });
     }
   };
 
@@ -294,6 +324,28 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
                   Ces prédictions sont générées par une IA qui simule des techniques d'analyse avancées. Elle ne s'entraîne pas en temps réel (ex: via rétropropagation) dans cette application. La loterie est un jeu de hasard et les résultats passés ne garantissent pas les résultats futurs. Jouez de manière responsable.
                 </AlertDescription>
               </Alert>
+
+               {/* Feedback Section */}
+              <div className="pt-6 mt-6 border-t">
+                {!feedbackSent ? (
+                  <div className="space-y-2">
+                    <h4 className="text-md font-semibold text-foreground">Cette prédiction était-elle utile ?</h4>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleFeedback('relevant')}>
+                        <ThumbsUp className="mr-2 h-4 w-4" /> Oui
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleFeedback('not_relevant')}>
+                        <ThumbsDown className="mr-2 h-4 w-4" /> Non
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold text-green-600 flex items-center">
+                    <CheckCircle className="mr-2 h-4 w-4" /> Merci pour votre retour !
+                  </p>
+                )}
+              </div>
+
             </div>
           )}
         </CardContent>

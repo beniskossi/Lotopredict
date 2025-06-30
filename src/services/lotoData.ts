@@ -19,9 +19,11 @@ import {
   serverTimestamp,
   Timestamp,
   startAfter,
+  addDoc,
   type QueryConstraint,
   type QueryDocumentSnapshot
 } from "firebase/firestore";
+import type { GenerateDrawPredictionsOutput } from '@/ai/flows/generate-draw-predictions';
 
 const RESULTS_COLLECTION_NAME = 'lottoResults';
 const DEFAULT_PAGE_SIZE = 10;
@@ -775,4 +777,23 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
   await setDoc(docRef, dataToSave, {merge: true}); // Use merge:true to be safe, though setDoc on new is fine.
 }
 
-    
+export interface PredictionFeedbackPayload extends GenerateDrawPredictionsOutput {
+  drawSlug: string;
+  feedback: 'relevant' | 'not_relevant';
+  analysisPeriodUsed?: string;
+  numberWeightingUsed?: string;
+}
+
+export async function savePredictionFeedback(data: PredictionFeedbackPayload): Promise<void> {
+  try {
+    const feedbackCollectionRef = collection(db, 'predictionFeedback');
+    await addDoc(feedbackCollectionRef, {
+      ...data,
+      feedbackTimestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error saving prediction feedback:", error);
+    // Re-throw to allow UI to handle it, e.g., show a toast
+    throw new Error("Failed to save feedback.");
+  }
+}
