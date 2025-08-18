@@ -127,26 +127,6 @@ export const ALL_DRAW_NAMES_MAP = DRAW_SCHEDULE.reduce((acc, daySchedule) => {
   return acc;
 }, {} as Record<string, string>);
 
-export const DRAW_SLUG_BY_SIMPLE_NAME_MAP = DRAW_SCHEDULE.reduce((acc, daySchedule) => {
-  daySchedule.draws.forEach(draw => {
-    // Normalize the simple draw name for robust mapping (lowercase, remove accents)
-    const normalizedSimpleName = draw.name
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-    if (!acc[normalizedSimpleName]) { // Prefer the first encountered slug for a given simple name
-      acc[normalizedSimpleName] = draw.slug;
-    }
-    // Also map the original simple name if it's different from normalized, just in case
-    if (draw.name.trim() !== normalizedSimpleName && !acc[draw.name.trim()]) {
-        acc[draw.name.trim()] = draw.slug;
-    }
-  });
-  return acc;
-}, {} as Record<string, string>);
-
-
 export const getDrawNameBySlug = (slug: string): string => {
   return ALL_DRAW_NAMES_MAP[slug] || "Tirage Inconnu";
 };
@@ -157,3 +137,16 @@ export const ICONS_MAP = {
   statistiques: BarChartBig,
   prediction: BrainCircuit,
 } as const;
+
+export const DRAW_SLUG_BY_SIMPLE_NAME_MAP = DRAW_SCHEDULE.reduce((acc, day) => {
+    day.draws.forEach(draw => {
+        // Normalize: lowercase, remove accents, trim whitespace
+        const normalizedName = draw.name
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+        acc[normalizedName] = draw.slug;
+    });
+    return acc;
+}, {} as Record<string, string>);

@@ -16,14 +16,6 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
 };
 
-// Validate that the essential Firebase config variables are present.
-// This provides a clearer error message during development if the .env file is missing.
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  throw new Error(
-    'Firebase configuration is missing. Please check your .env file and ensure NEXT_PUBLIC_FIREBASE_API_KEY and NEXT_PUBLIC_FIREBASE_PROJECT_ID are set.'
-  );
-}
-
 // Initialize Firebase
 // This ensures Firebase is initialized only once.
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

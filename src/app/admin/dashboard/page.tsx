@@ -1,22 +1,18 @@
 
 "use client";
-import React from 'react'; // Added React for Suspense and lazy
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Database, FileUp, Download, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Edit3, Trash2, ShieldAlert, UserCircle } from "lucide-react";
+import { Database, FileUp, Download, Settings, ListChecks, BarChartHorizontalBig, PlusCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-// import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable"; // Will be dynamically imported
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
-import { fetchAllLottoResultsForExport, type FirestoreDrawDoc } from "@/services/lotoData";
+import RecentDrawResultsTable from "@/components/admin/RecentDrawResultsTable";
 
 export default function AdminDashboardPage() {
   const { currentUser } = useAuth(); 
-  const { toast } = useToast();
-  const RecentDrawResultsTable = React.lazy(() => import('@/components/admin/RecentDrawResultsTable'));
 
   if (!currentUser) {
+    // This part is largely handled by AdminAuthGuard, but serves as a fallback.
     return (
       <div className="space-y-6 text-center">
         <h1 className="text-2xl font-bold text-primary">Accès non autorisé</h1>
@@ -27,229 +23,68 @@ export default function AdminDashboardPage() {
       </div>
     );
   }
-
-  const convertToCSV = (data: FirestoreDrawDoc[]): string => {
-    if (!data || data.length === 0) {
-      return "";
-    }
-
-    const header = ["docId", "apiDrawName", "date", "winningNumbers", "machineNumbers", "fetchedAt"];
-    const rows = data.map(row => {
-      const wn = row.winningNumbers.join(';'); 
-      const mn = row.machineNumbers && row.machineNumbers.length > 0 ? row.machineNumbers.join(';') : '';
-      const fa = row.fetchedAt && (row.fetchedAt as any).toDate ? (row.fetchedAt as any).toDate().toISOString() : '';
-      
-      // Escape quotes by doubling them, and enclose in quotes
-      const sanitize = (str: string | undefined) => str ? `"${String(str).replace(/"/g, '""')}"` : '""';
-
-      return [
-        sanitize(row.docId),
-        sanitize(row.apiDrawName),
-        sanitize(row.date),
-        sanitize(wn),
-        sanitize(mn),
-        sanitize(fa)
-      ].join(',');
-    });
-
-    return [header.join(','), ...rows].join('\n');
-  };
-
-  const downloadCSV = (csvString: string, filename: string) => {
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
-  };
-
-  const handleExportData = async () => {
-    toast({
-      title: "Exportation en cours...",
-      description: "Veuillez patienter pendant la préparation du fichier.",
-    });
-    try {
-      const results = await fetchAllLottoResultsForExport();
-      if (results.length === 0) {
-        toast({
-          variant: "default",
-          title: "Aucune donnée à exporter",
-          description: "La base de données ne contient aucun résultat de tirage.",
-        });
-        return;
-      }
-      const csvString = convertToCSV(results);
-      const filename = `loto_predict_export_${new Date().toISOString().split('T')[0]}.csv`;
-      downloadCSV(csvString, filename);
-      toast({
-        title: "Exportation Réussie",
-        description: `${results.length} résultats ont été exportés dans ${filename}.`,
-      });
-    } catch (error) {
-      console.error("Export error:", error);
-      toast({
-        variant: "destructive",
-        title: "Échec de l'Exportation",
-        description: "Une erreur est survenue lors de l'exportation des données.",
-      });
-    }
-  };
   
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-primary">Tableau de Bord Admin</h1>
-        {currentUser && (
-          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-            <UserCircle className="h-5 w-5" />
-            <span>{currentUser.email}</span>
-          </div>
-        )}
-      </div>
+      <h1 className="text-3xl font-bold text-primary">Tableau de Bord Admin</h1>
       
-      <Card className="shadow-lg">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center text-xl">
-            <Database className="mr-2 h-5 w-5 text-primary" />
-            Gestion des Résultats des Tirages (Firestore)
+            <Database className="mr-2 h-5 w-5" />
+            Gestion des Données de Tirage
           </CardTitle>
           <CardDescription>
-            Les résultats des tirages récupérés par API depuis <code>https://lotobonheur.ci/resultats</code> sont sauvegardés dans une base de données Firebase Firestore.
-            Cette section affiche les derniers résultats et permettra à terme une gestion complète (CRUD).
+            Ajoutez, importez ou supprimez des résultats de tirages. Visualisez les données les plus récentes stockées dans Firestore.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-           <h3 className="text-lg font-semibold text-foreground">Résultats Récents Sauvegardés</h3>
-           <React.Suspense fallback={<div className="p-4 text-center">Chargement des résultats...</div>}>
-             <RecentDrawResultsTable />
-           </React.Suspense>
-          <Alert variant="default" className="border-primary/50 mt-6">
-            <ShieldAlert className="h-4 w-4 text-primary" />
-            <AlertTitle className="text-primary">Développement Futur : Interface CRUD</AlertTitle>
-            <AlertDescription>
-              Interface CRUD : Une interface complète (Créer, Lire, Mettre à jour, Supprimer) pour ces données est prévue. La suppression est maintenant possible via le tableau ci-dessus.
-            </AlertDescription>
-          </Alert>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            <Link href="/admin/results/add" passHref>
-              <FeatureTile 
-                icon={<PlusCircle />} 
-                title="Ajouter un Résultat" 
-                description="Interface pour ajouter manuellement de nouveaux résultats (avec validation)." 
-                onClick={() => {}} // Dummy onClick for styling when used with Link
-              />
-            </Link>
-            <FeatureTile 
-              icon={<Edit3 />} 
-              title="Modifier un Résultat" 
-              description="Options pour éditer des résultats existants. (Prochainement)" 
-              onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "La modification des résultats sera bientôt disponible."})} 
-            />
-            <FeatureTile icon={<Trash2 />} title="Supprimer un Résultat" description="Suppression possible via le tableau des résultats récents." onClick={() => {}} />
-          </div>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+           <Button asChild variant="outline">
+              <Link href="/admin/results/add">
+                <PlusCircle className="mr-2 h-4 w-4" /> Ajouter un Résultat
+              </Link>
+           </Button>
+           <Button asChild variant="outline">
+               <Link href="/admin/import">
+                <FileUp className="mr-2 h-4 w-4" /> Importer des Données
+               </Link>
+          </Button>
+          <Button variant="destructive" disabled>
+            <Trash2 className="mr-2 h-4 w-4" /> Supprimer par Lot (à venir)
+          </Button>
         </CardContent>
       </Card>
 
-      <Card className="shadow-lg">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center text-xl">
-            <Settings className="mr-2 h-5 w-5 text-primary" />
-            Import / Export des Données
-          </CardTitle>
-          <CardDescription>
-            Fonctionnalités pour importer des lots de données historiques ou exporter les données stockées.
-          </CardDescription>
+            <CardTitle>Derniers Résultats Enregistrés</CardTitle>
+            <CardDescription>Aperçu des 20 derniers résultats de tirage enregistrés dans la base de données.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Link href="/admin/import" passHref>
-            <FeatureTile 
-              icon={<FileUp />} 
-              title="Importer des Données" 
-              description="Importer des résultats depuis un fichier (CSV, JSON)."
-              onClick={() => {}} // Dummy onClick for styling when used with Link
-            />
-          </Link>
-          <FeatureTile 
-            icon={<Download />} 
-            title="Exporter les Données" 
-            description="Exporter tous les résultats (CSV, JSON)." 
-            onClick={handleExportData}
-          />
+        <CardContent>
+            <RecentDrawResultsTable />
         </CardContent>
       </Card>
       
-      <Card className="shadow-lg">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center text-xl">
-            <BarChartHorizontalBig className="mr-2 h-5 w-5 text-primary" />
+            <BarChartHorizontalBig className="mr-2 h-5 w-5" />
             Outils d'Analyse et de Maintenance
           </CardTitle>
           <CardDescription>
             Statistiques sur les données gérées, journaux d'activité et de synchronisation.
+            (Fonctionnalités à venir)
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FeatureTile 
-            icon={<BarChartHorizontalBig />} 
-            title="Statistiques des Données" 
-            description="Visualiser des métriques sur les données stockées. (Prochainement)" 
-            onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les statistiques des données seront bientôt disponibles."})}
-          />
-          <FeatureTile 
-            icon={<ListChecks />} 
-            title="Journaux d'Activité" 
-            description="Suivre les opérations de synchronisation et les erreurs. (Prochainement)" 
-            onClick={() => toast({ title: "Fonctionnalité en cours de développement", description: "Les journaux d'activité seront bientôt disponibles."})}
-          />
+          <Button variant="outline" disabled>
+             <BarChartHorizontalBig className="mr-2 h-4 w-4" /> Statistiques des Données
+          </Button>
+          <Button variant="outline" disabled>
+            <ListChecks className="mr-2 h-4 w-4" /> Journaux d'Activité
+          </Button>
         </CardContent>
       </Card>
-
-    </div>
-  );
-}
-
-interface FeatureTileProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  onClick?: () => void;
-}
-
-function FeatureTile({ icon, title, description, onClick }: FeatureTileProps) {
-  const tileClasses = `p-4 border rounded-lg h-full flex flex-col ${
-    !onClick 
-      ? 'bg-muted/50 opacity-60 cursor-not-allowed' 
-      : 'bg-card hover:shadow-md transition-shadow cursor-pointer'
-  }`;
-
-  const content = (
-    <>
-      <div className="flex items-center text-primary mb-2">
-        {icon}
-        <h3 className="ml-2 text-md font-semibold text-foreground">{title}</h3>
-      </div>
-      <p className="text-xs text-muted-foreground flex-grow">{description}</p>
-    </>
-  );
-
-  // If it's not meant to be clickable (no onClick passed), render a simple div
-  if (!onClick) {
-    return <div className={tileClasses}>{content}</div>;
-  }
-
-  // If it's clickable, make it a div with button role and event handlers
-  return (
-    <div className={tileClasses} onClick={onClick} role="button" tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
-    >
-      {content}
     </div>
   );
 }

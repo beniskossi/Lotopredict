@@ -1,15 +1,13 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataSection } from "@/components/loto/DataSection";
-// import { StatsSection } from "@/components/loto/StatsSection"; // Original import - now handled by DynamicStatsLoader
+import { StatsSection } from "@/components/loto/StatsSection";
 import { ConsultSection } from "@/components/loto/ConsultSection";
 import { PredictionSection } from "@/components/loto/PredictionSection";
 import { ALL_DRAW_SLUGS, getDrawNameBySlug, ICONS_MAP } from "@/lib/lotoDraws.tsx";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle } from "lucide-react";
-import type { Metadata } from 'next';
-import DynamicStatsLoader from "@/components/loto/DynamicStatsLoader"; // Import the new loader component
-import { Skeleton } from "@/components/ui/skeleton"; // Ensure Skeleton is imported if used directly here (though it's in DynamicStatsLoader)
+import type { Metadata, ResolvingMetadata } from 'next';
 
 type DrawPageProps = {
   params: { draw_slug: string };
@@ -21,7 +19,10 @@ export async function generateStaticParams() {
   }));
 }
 
-export async function generateMetadata({ params }: DrawPageProps): Promise<Metadata> {
+export async function generateMetadata(
+  { params }: DrawPageProps,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
   const drawName = getDrawNameBySlug(params.draw_slug);
   return {
     title: `${drawName} - LotoPredict`,
@@ -50,7 +51,7 @@ export default function DrawPage({ params }: DrawPageProps) {
 
   const TABS_CONFIG = [
     { value: "donnees", label: "Données", Icon: ICONS_MAP.donnees, component: <DataSection drawSlug={draw_slug} /> },
-    { value: "statistiques", label: "Statistiques", Icon: ICONS_MAP.statistiques, component: <DynamicStatsLoader drawSlug={draw_slug} /> },
+    { value: "statistiques", label: "Statistiques", Icon: ICONS_MAP.statistiques, component: <StatsSection drawSlug={draw_slug} /> },
     { value: "consulter", label: "Consulter", Icon: ICONS_MAP.consulter, component: <ConsultSection drawSlug={draw_slug} /> },
     { value: "prediction", label: "Prédiction IA", Icon: ICONS_MAP.prediction, component: <PredictionSection drawSlug={draw_slug} /> },
   ];

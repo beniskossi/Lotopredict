@@ -142,7 +142,7 @@ export default function RecentDrawResultsTable() {
             {results.map((result, index) => (
               <TableRow key={result.docId || `${result.date}-${result.apiDrawName}-${index}`}>
                 <TableCell className="whitespace-nowrap">
-                  {format(parseISO(result.date), 'dd/MM/yyyy', { locale: fr })}
+                  {result.date ? format(parseISO(result.date), 'dd/MM/yyyy', { locale: fr }) : 'Date Inconnue'}
                 </TableCell>
                 <TableCell>{result.apiDrawName}</TableCell>
                 <TableCell>
@@ -178,7 +178,7 @@ export default function RecentDrawResultsTable() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la Suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer le tirage {resultToDelete?.apiDrawName} du {resultToDelete && format(parseISO(resultToDelete.date), 'dd/MM/yyyy', { locale: fr })} ? Cette action est irréversible.
+              Êtes-vous sûr de vouloir supprimer le tirage {resultToDelete?.apiDrawName} du {resultToDelete && resultToDelete.date ? format(parseISO(resultToDelete.date), 'dd/MM/yyyy', { locale: fr }) : ''} ? Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
