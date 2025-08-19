@@ -31,7 +31,7 @@ const PREDICTION_CACHE_COLLECTION_NAME = 'predictionCache';
 const PREDICTION_FEEDBACK_COLLECTION_NAME = 'predictionFeedback';
 
 const DEFAULT_PAGE_SIZE = 10;
-const MAX_HISTORICAL_FETCH_LIMIT = 100;
+const MAX_HISTORICAL_FETCH_LIMIT = 200;
 const PREDICTION_CACHE_TTL_MINUTES = 60; // Cache predictions for 1 hour
 
 
