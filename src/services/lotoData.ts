@@ -76,14 +76,13 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
         const monthName = format(new Date(parseInt(year, 10), parseInt(month, 10) - 1), 'MMMM', { locale: fr }).toLowerCase();
         url = `${baseUrl}?month=${monthName}-${year}`;
     }
-
-    // Using a CORS proxy for development/server-side fetching. Replace if running in a different environment.
-    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-    const requestUrl = `${proxyUrl}${url}`;
     
     try {
-        const response = await fetch(requestUrl, {
-            headers: { 'Origin': 'https://lotobonheur.ci' }
+        const response = await fetch(url, {
+             headers: {
+                // Simulate a browser User-Agent to avoid being blocked
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+             },
         });
 
         if (!response.ok) {
@@ -460,3 +459,5 @@ export async function fetchLottoResultById(docId: string): Promise<FirestoreDraw
         throw error;
     }
 }
+
+    
