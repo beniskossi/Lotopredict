@@ -18,8 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { ALL_DRAW_NAMES_MAP, DRAW_SCHEDULE } from '@/lib/lotoDraws.tsx';
-import type { ManualEditResultFormInput, ManualLottoResultInput, FirestoreDrawDoc } from '@/types/loto';
+import { ALL_DRAW_NAMES_MAP, DRAW_SLUG_BY_SIMPLE_NAME_MAP } from '@/lib/lotoDraws.tsx';
+import type { ManualEditResultFormInput, ManualLottoResultInput } from '@/types/loto';
 import { fetchLottoResultById, updateLottoResult } from '@/services/lotoData';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,7 +61,7 @@ const EditResultSchema = z.object({
 })
 .superRefine((data, ctx) => {
   const winningNumbers = [data.wn1, data.wn2, data.wn3, data.wn4, data.wn5].filter(n => n !== undefined) as number[];
-  if (new Set(winningNumbers).size !== 5) {
+  if (winningNumbers.length === 5 && new Set(winningNumbers).size !== 5) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Les numéros gagnants doivent être distincts.", path: ["wn1"] });
   }
 
@@ -112,12 +112,6 @@ export default function EditResultPage() {
                 router.push('/admin/dashboard');
                 return;
             }
-
-            const drawSlug = Object.keys(DRAW_SLUG_BY_SIMPLE_NAME_MAP).find(key => 
-                DRAW_SLUG_BY_SIMPLE_NAME_MAP[key] === Object.keys(ALL_DRAW_NAMES_MAP).find(slug => 
-                    ALL_DRAW_NAMES_MAP[slug].toLowerCase().includes(resultData.apiDrawName.toLowerCase())
-                )
-            );
             
             const simpleDrawName = resultData.apiDrawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
             const matchingSlug = DRAW_SLUG_BY_SIMPLE_NAME_MAP[simpleDrawName];
@@ -133,7 +127,6 @@ export default function EditResultPage() {
                 mn1: resultData.machineNumbers?.[0],
                 mn2: resultData.machineNumbers?.[1],
                 mn3: resultData.machineNumbers?.[2],
-
                 mn4: resultData.machineNumbers?.[3],
                 mn5: resultData.machineNumbers?.[4],
             });
