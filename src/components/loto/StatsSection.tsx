@@ -15,7 +15,7 @@ import { RefreshCw, CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -66,8 +66,10 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
     }
 
     const dataToProcess = allHistoricalData.filter(entry => {
-      if (!entry.date || !isValid(parseISO(entry.date))) return false;
+      if (!entry.date) return false;
       const entryDate = parseISO(entry.date);
+      if (!isValid(entryDate)) return false;
+
       const isAfterStartDate = dateRange.from ? entryDate >= dateRange.from : true;
       const isBeforeEndDate = dateRange.to ? entryDate <= dateRange.to : true;
       return isAfterStartDate && isBeforeEndDate;
