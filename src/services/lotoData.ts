@@ -1,5 +1,5 @@
 
-import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence, ManualEditResultFormInput } from '@/types/loto';
+import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence, ManualEditResultFormInput, PredictionFeedback } from '@/types/loto';
 import { DRAW_SCHEDULE, ALL_DRAW_NAMES_MAP, getDrawNameBySlug, DRAW_SLUG_BY_SIMPLE_NAME_MAP } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture } from 'date-fns';
 import fr from 'date-fns/locale/fr';
@@ -24,7 +24,7 @@ import {
   type QueryConstraint,
   type QueryDocumentSnapshot
 } from "firebase/firestore";
-import {PredictionFeedback} from "@/types/loto";
+
 
 const RESULTS_COLLECTION_NAME = 'lottoResults';
 const PREDICTION_CACHE_COLLECTION_NAME = 'predictionCache';
@@ -80,7 +80,6 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
     try {
         const response = await fetch(url, {
              headers: {
-                // Simulate a browser User-Agent to avoid being blocked
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
              },
         });
@@ -105,7 +104,6 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
             for (const dailyResult of week.drawResultsDaily) {
                 const dateStr = dailyResult.date;
                 const dateParts = dateStr.split(' ');
-                // Handle cases like "Lundi 01/07"
                 const dayMonth = dateParts.length > 1 ? dateParts[1] : dateParts[0];
                 
                 let drawDate: Date | null = null;
@@ -114,7 +112,6 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
                      if (isValid(parsedDate) && !isFuture(parsedDate)) {
                         drawDate = parsedDate;
                      } else {
-                        // If date is in the future, it's likely from the previous year
                         const pastDate = dateFnsParse(dayMonth, 'dd/MM', new Date(currentYear - 1, 0, 1));
                         if(isValid(pastDate)) drawDate = pastDate;
                      }
@@ -182,7 +179,6 @@ async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt'| 
             machineNumbers: draw.machineNumbers || [],
         };
         
-        // Always set with merge to avoid overwriting existing data if run by different contexts
         batch.set(docRef, dataToSave, { merge: true });
     }
 
@@ -243,12 +239,10 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
   try {
     let querySnapshot = await getDocs(q);
 
-    // If initial query for the page is empty, try to sync from API
     if (querySnapshot.empty && !startAfterDoc) {
         const syncMonth = year && month ? `${year}-${String(month).padStart(2, '0')}` : format(new Date(), 'yyyy-MM');
         const apiData = await _fetchAndProcessExternalApi(syncMonth);
         await _saveDrawsToFirestore(apiData);
-        // Retry the query after attempting to sync
         querySnapshot = await getDocs(q);
     }
 
@@ -269,7 +263,6 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
 
   } catch (error) {
     console.error(`Error fetching draws for ${canonicalDrawName} (slug: ${drawSlug}):`, error);
-    // Return an empty result on error to prevent crashing the UI
     return { results: [], lastDocSnapshot: null };
   }
 };
@@ -291,7 +284,6 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
     try {
         let querySnapshot = await getDocs(q);
 
-        // If we get no data, try to backfill with API data for the current and previous month
         if (querySnapshot.empty) {
             console.log(`No historical data for ${canonicalDrawName}, attempting to backfill...`);
             const currentMonth = format(new Date(), 'yyyy-MM');
@@ -299,7 +291,6 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
             const apiDataCurrent = await _fetchAndProcessExternalApi(currentMonth);
             const apiDataPrev = await _fetchAndProcessExternalApi(prevMonth);
             await _saveDrawsToFirestore([...apiDataCurrent, ...apiDataPrev]);
-            // Retry query after backfill attempt
             querySnapshot = await getDocs(q);
         }
         
@@ -309,7 +300,7 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
             return {
                 docId: doc.id,
                 drawName: drawSlug,
-                date: isValid(dateObj) ? format(dateObj, 'yyyy-MM-dd') : 'Invalid Date', // Return ISO string for processing
+                date: isValid(dateObj) ? format(dateObj, 'yyyy-MM-dd') : 'Invalid Date', 
                 winningNumbers: data.winningNumbers,
                 machineNumbers: data.machineNumbers && data.machineNumbers.length > 0 ? data.machineNumbers : [],
             };
@@ -355,10 +346,8 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
     const docId = constructLottoResultDocId(formattedDate, apiDrawName);
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
 
-    // Check for duplicates
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-        // You can decide to throw an error or just warn and exit
         throw new Error(`Un résultat pour le tirage ${apiDrawName} à la date ${formattedDate} existe déjà.`);
     }
 
@@ -390,12 +379,10 @@ export async function updateLottoResult(docId: string, input: ManualLottoResultI
         date: newFormattedDate,
         winningNumbers,
         machineNumbers: machineNumbers || [],
-        fetchedAt: serverTimestamp() as Timestamp, // Update the timestamp
+        fetchedAt: serverTimestamp() as Timestamp,
     };
 
     if (docId !== newDocId) {
-        // Date or Draw Name has changed, which changes the document ID.
-        // We must delete the old document and create a new one.
         const newDocRef = doc(db, RESULTS_COLLECTION_NAME, newDocId);
         const newDocSnap = await getDoc(newDocRef);
         if (newDocSnap.exists()) {
@@ -403,12 +390,11 @@ export async function updateLottoResult(docId: string, input: ManualLottoResultI
         }
         
         const batch = writeBatch(db);
-        batch.delete(docRef); // Delete the old document
-        batch.set(newDocRef, dataToUpdate); // Create the new one
+        batch.delete(docRef);
+        batch.set(newDocRef, dataToUpdate);
         await batch.commit();
 
     } else {
-        // The ID hasn't changed, we can just update the existing document.
         await updateDoc(docRef, dataToUpdate);
     }
 }
@@ -438,14 +424,11 @@ export async function savePredictionFeedback(feedback: Omit<PredictionFeedback, 
         });
     } catch (error) {
         console.error("Error saving prediction feedback:", error);
-        // Optionally re-throw or handle as needed by the UI
+        throw error;
     }
 }
 
 
-/**
- * Fetches a single lotto result by its document ID.
- */
 export async function fetchLottoResultById(docId: string): Promise<FirestoreDrawDoc | null> {
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
     try {
@@ -459,5 +442,3 @@ export async function fetchLottoResultById(docId: string): Promise<FirestoreDraw
         throw error;
     }
 }
-
-    

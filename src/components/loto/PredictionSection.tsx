@@ -8,14 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LotoBall } from "./LotoBall";
 import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type GenerateDrawPredictionsInput, type HistoricalEntry } from '@/ai/flows/generate-draw-predictions';
-import { fetchHistoricalData } from '@/services/lotoData';
+import { fetchHistoricalData, savePredictionFeedback } from '@/services/lotoData';
 import type { HistoricalDataEntry } from '@/types/loto';
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
-import { Wand2, Loader2, HelpCircle, Info } from 'lucide-react';
+import { Wand2, Loader2, HelpCircle, Info, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from '../ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Label } from '../ui/label';
 
 interface PredictionSectionProps {
   drawSlug: string;
@@ -28,6 +30,10 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
+  const [currentFeedback, setCurrentFeedback] = useState<{isRelevant: boolean, reasoning: string}>({isRelevant: false, reasoning: ''});
+
   const { toast } = useToast();
 
   const drawNameDisplay = getDrawNameBySlug(drawSlug);
@@ -79,9 +85,9 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     setIsLoading(true);
     setError(null);
     setPredictions(null);
+    setFeedbackSubmitted(false); // Reset feedback state for new prediction
 
     try {
-      // Map rawHistoricalEntries to the structure expected by the Genkit flow
       const historicalEntriesForFlow: HistoricalEntry[] = rawHistoricalEntries.map(entry => ({
         date: entry.date,
         winningNumbers: entry.winningNumbers,
@@ -108,6 +114,36 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
     }
   };
 
+  const handleFeedbackClick = (isRelevant: boolean) => {
+    setCurrentFeedback({isRelevant, reasoning: ''});
+    setShowFeedbackDialog(true);
+  }
+
+  const handleFeedbackSubmit = async () => {
+    if (!predictions) return;
+    
+    try {
+        await savePredictionFeedback({
+            drawSlug,
+            prediction: predictions.predictions,
+            isRelevant: currentFeedback.isRelevant,
+            reasoning: currentFeedback.reasoning,
+        });
+        setFeedbackSubmitted(true);
+        setShowFeedbackDialog(false);
+        toast({
+            title: "Merci !",
+            description: "Votre retour a bien été enregistré.",
+        });
+    } catch (error) {
+        toast({
+            variant: "destructive",
+            title: "Erreur",
+            description: "Impossible d'enregistrer votre retour. Veuillez réessayer.",
+        });
+    }
+  }
+
   return (
     <TooltipProvider>
       <Card className="shadow-lg">
@@ -122,7 +158,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
               </TooltipTrigger>
               <TooltipContent side="top">
                 <p className="max-w-xs">
-                  Prédictions générées par une IA simulant des techniques d'analyse avancées (XGBoost, Random Forest, RNN-LSTM).
+                  Prédictions générées par une IA simulant des techniques d'analyse avancées.
                   La loterie reste un jeu de hasard.
                 </p>
               </TooltipContent>
@@ -157,7 +193,7 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
 
           <Button onClick={handleGeneratePredictions} disabled={isLoading || isLoadingHistory} className="w-full md:w-auto">
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-            Générer les Prédictions
+            {predictions ? "Régénérer les Prédictions" : "Générer les Prédictions"}
           </Button>
 
           {error && (
@@ -200,6 +236,31 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
               <ScrollArea className="h-40 w-full rounded-md border p-3 bg-muted/50">
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{predictions.reasoning}</p>
               </ScrollArea>
+              
+              {!feedbackSubmitted ? (
+                 <div className="pt-4 space-y-2">
+                    <h4 className="text-sm font-medium text-foreground">Cette prédiction est-elle pertinente ?</h4>
+                    <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleFeedbackClick(true)}>
+                            <ThumbsUp className="mr-2 h-4 w-4 text-green-500"/>
+                            Pertinent
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleFeedbackClick(false)}>
+                            <ThumbsDown className="mr-2 h-4 w-4 text-red-500"/>
+                            Non pertinent
+                        </Button>
+                    </div>
+                </div>
+              ) : (
+                <Alert variant="default" className="mt-4 border-green-500/50 bg-green-500/10 text-green-700 [&>svg]:text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertTitle className="text-green-800">Merci pour votre retour !</AlertTitle>
+                    <AlertDescription>
+                        Votre avis nous aide à améliorer nos prédictions.
+                    </AlertDescription>
+                </Alert>
+              )}
+
               <Alert variant="default">
                 <Info className="h-4 w-4" />
                 <AlertTitle>Note sur l'IA</AlertTitle>
@@ -216,6 +277,35 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
           </p>
         </CardFooter>
       </Card>
+      
+      <Dialog open={showFeedbackDialog} onOpenChange={setShowFeedbackDialog}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Donner votre avis</DialogTitle>
+                <DialogDescription>
+                    {currentFeedback.isRelevant ? "Pourquoi avez-vous trouvé cette prédiction pertinente ?" : "Qu'est-ce qui pourrait être amélioré ?"}
+                    (Optionnel)
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="reasoning">Commentaire</Label>
+                    <Textarea 
+                        id="reasoning"
+                        value={currentFeedback.reasoning}
+                        onChange={(e) => setCurrentFeedback(prev => ({...prev, reasoning: e.target.value}))}
+                        placeholder="Votre avis nous intéresse..."
+                    />
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="ghost">Annuler</Button>
+                </DialogClose>
+                <Button onClick={handleFeedbackSubmit}>Envoyer</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }
