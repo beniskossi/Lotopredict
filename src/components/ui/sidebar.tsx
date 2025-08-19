@@ -176,7 +176,21 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const { isMobile, state, openMobile, setOpenMobile, setOpen } = useSidebar()
+    const leaveTimeout = React.useRef<NodeJS.Timeout | null>(null);
+
+    const handleMouseEnter = () => {
+      if (leaveTimeout.current) {
+        clearTimeout(leaveTimeout.current);
+      }
+      setOpen(true);
+    };
+
+    const handleMouseLeave = () => {
+      leaveTimeout.current = setTimeout(() => {
+        setOpen(false);
+      }, 200); // 200ms delay
+    };
 
     if (collapsible === "none") {
       return (
@@ -222,6 +236,8 @@ const Sidebar = React.forwardRef<
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div

@@ -10,7 +10,7 @@ import { Home, Settings } from 'lucide-react';
 import PWAInstallButton from '@/components/PWAInstallButton';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
