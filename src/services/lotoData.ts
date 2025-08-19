@@ -442,3 +442,52 @@ export async function fetchLottoResultById(docId: string): Promise<FirestoreDraw
         throw error;
     }
 }
+
+export async function findDrawsByNumbers(drawSlug: string, numbers: number[]): Promise<DrawResult[]> {
+    const canonicalDrawName = getApiDrawNameFromSlug(drawSlug);
+    if (!canonicalDrawName) {
+        console.error(`Unknown draw slug: ${drawSlug}`);
+        return [];
+    }
+    
+    // Firestore's array-contains-all is perfect for this.
+    // It checks if the `winningNumbers` array field contains all the elements you provide.
+    const q = query(
+        collection(db, RESULTS_COLLECTION_NAME),
+        where("apiDrawName", "==", canonicalDrawName),
+        where("winningNumbers", "array-contains-all", numbers),
+        orderBy("date", "desc")
+    );
+
+    try {
+        const querySnapshot = await getDocs(q);
+        const results: DrawResult[] = [];
+        
+        querySnapshot.forEach(docSnap => {
+            const data = docSnap.data() as FirestoreDrawDoc;
+
+            // Since array-contains-all finds supersets, we need to do a final check
+            // to ensure the arrays are of the same length and have the same elements.
+            const dbNumbers = data.winningNumbers.sort();
+            const userNumbers = [...numbers].sort();
+            
+            if (dbNumbers.length === userNumbers.length && dbNumbers.every((val, index) => val === userNumbers[index])) {
+                 const dateObj = parseISO(data.date);
+                 results.push({
+                    docId: docSnap.id,
+                    date: isValid(dateObj) ? format(dateObj, 'PPP', { locale: fr }) : `Date invalide: ${data.date}`,
+                    winningNumbers: data.winningNumbers,
+                    machineNumbers: data.machineNumbers && data.machineNumbers.length > 0 ? data.machineNumbers : undefined,
+                 });
+            }
+        });
+        
+        return results;
+
+    } catch (error) {
+        console.error(`Error finding draws by numbers for ${canonicalDrawName}:`, error);
+        throw new Error("Failed to search for combinations.");
+    }
+}
+
+    
