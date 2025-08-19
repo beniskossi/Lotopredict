@@ -65,40 +65,51 @@ const prompt = ai.definePrompt({
   name: 'generateDrawPredictionsPrompt',
   input: {schema: PromptInputSchema}, // Uses the schema expecting a string for historicalData
   output: {schema: GenerateDrawPredictionsOutputSchema},
-  prompt: `Vous êtes un système expert en analyse de loterie, simulant une **approche hybride avancée** pour générer des prédictions. Votre objectif est de fournir des prédictions professionnelles et une analyse détaillée.
+  prompt: `Vous êtes un système expert en analyse de données de loterie, chargé de générer des prédictions en suivant une méthodologie d'analyse structurée en plusieurs étapes qui simule une approche hybride avancée.
 
-Nom du Tirage : {{{drawName}}}
+**Nom du Tirage :** {{{drawName}}}
 
-Données Historiques Fournies :
+**Données Historiques Fournies :**
 {{{historicalData}}}
 
-Votre analyse est basée sur une simulation de trois modèles d'apprentissage automatique, dont les résultats sont combinés dans une approche d'ensemble :
+**Votre Tâche :**
+Vous devez suivre rigoureusement les 4 étapes suivantes pour produire votre analyse et vos prédictions. Votre raisonnement final doit clairement refléter les conclusions de chaque étape.
 
-1.  **Simulation de XGBoost :**
-    *   **Objectif :** Analyser en profondeur la fréquence et les écarts (le nombre de tirages entre les apparitions) de chaque numéro.
-    *   **Caractéristiques simulées :** Fréquence absolue, fréquence relative, écart moyen, écart maximum, écart actuel depuis la dernière apparition. Ce modèle est particulièrement efficace pour quantifier l'importance de chaque numéro pris individuellement.
+**Étape 1 : Analyse de Fréquence et d'Écarts (Simulation de type XGBoost)**
+*   **Objectif :** Évaluer l'importance de chaque numéro individuellement.
+*   **Actions :**
+    1.  Calculez la **fréquence** de chaque numéro (de 1 à 90) dans l'ensemble des données fournies.
+    2.  Identifiez les 10 numéros les plus fréquents ("numéros chauds").
+    3.  Identifiez les 10 numéros les moins fréquents ("numéros froids").
+    4.  Pour chaque numéro, calculez son **écart actuel** (nombre de tirages depuis sa dernière apparition). Identifiez les numéros avec les plus grands écarts.
+*   **Synthèse de l'Étape 1 :** Listez les numéros qui semblent les plus prometteurs en vous basant sur un équilibre entre haute fréquence et écart significatif (un numéro attendu).
 
-2.  **Simulation de Forêt Aléatoire (Random Forest) :**
-    *   **Objectif :** Valider les interactions complexes et les co-occurrences entre les numéros.
-    *   **Caractéristiques simulées :** Paires de numéros fréquentes, triplets, et autres associations non linéaires. Ce modèle identifie les groupes de numéros qui ont tendance à apparaître ensemble.
+**Étape 2 : Analyse des Co-occurrences (Simulation de type Random Forest)**
+*   **Objectif :** Identifier les relations et les paires de numéros qui apparaissent souvent ensemble.
+*   **Actions :**
+    1.  Analysez les données pour trouver les **paires de numéros** qui sont apparues le plus souvent ensemble dans le même tirage.
+    2.  Identifiez les **triplets de numéros** les plus fréquents.
+*   **Synthèse de l'Étape 2 :** Mettez en évidence les associations de numéros les plus fortes. Ces groupes peuvent renforcer la sélection d'un numéro identifié à l'étape 1.
 
-3.  **Simulation de Réseau de Neurones Récurrent (RNN-LSTM) :**
-    *   **Objectif :** Détecter les tendances et les séquences temporelles dans les tirages.
-    *   **Caractéristiques simulées :** Analyse des séquences de tirages pour identifier des motifs périodiques, des tendances à la hausse ou à la baisse dans la fréquence de certains numéros ou groupes de numéros.
+**Étape 3 : Analyse des Séquences Temporelles (Simulation de type RNN-LSTM)**
+*   **Objectif :** Détecter des tendances ou des motifs dans le temps.
+*   **Actions :**
+    1.  Examinez les tirages les plus récents (les 10-15 derniers) pour identifier des **tendances** : des numéros "chauds" qui continuent de sortir, ou des numéros "froids" qui commencent à apparaître.
+    2.  Recherchez des motifs, par exemple, si des numéros d'une certaine dizaine (ex: les 20, les 30) apparaissent plus fréquemment ces derniers temps.
+*   **Synthèse de l'Étape 3 :** Décrivez les tendances récentes qui pourraient influencer le prochain tirage.
 
-**Mécanisme de Prédiction Hybride Simulé :**
-1.  Analysez les données historiques fournies.
-2.  Pour chaque numéro (1 à 90), simulez l'évaluation par chacun des trois modèles (XGBoost, Random Forest, RNN-LSTM) pour générer un score partiel.
-3.  Calculez un **score de confiance global** pour chaque numéro en agrégeant les scores partiels.
-4.  Sélectionnez les 5 numéros avec les scores de confiance globaux les plus élevés, en vous assurant qu'ils sont uniques.
+**Étape 4 : Synthèse Hybride et Génération de la Prédiction Finale**
+*   **Objectif :** Agréger les informations des trois étapes précédentes pour formuler la prédiction finale.
+*   **Actions :**
+    1.  **Pondérez les résultats :** Sélectionnez 5 numéros uniques en vous basant sur la convergence des analyses. Un numéro idéal serait :
+        *   Relativement fréquent (Étape 1).
+        *   Partie d'une paire ou d'un triplet à forte co-occurrence (Étape 2).
+        *   En accord avec une tendance récente (Étape 3) ou ayant un écart de sortie notable (Étape 1).
+    2.  **Formulez la prédiction :** Présentez les 5 numéros choisis.
+    3.  **Rédigez le raisonnement :** Élaborez un raisonnement détaillé qui explique **comment** vous êtes parvenu à cette sélection en vous référant explicitement aux conclusions des étapes 1, 2 et 3. Par exemple : "Le numéro X a été choisi car il est non seulement l'un des plus fréquents (Étape 1), mais il forme aussi une paire forte avec Y (Étape 2) et est apparu dans les tendances récentes (Étape 3)."
+    4.  **Définissez le score de confiance et sa justification :** Attribuez un score de confiance (par exemple, "Élevé", "Moyen", "4/5") et justifiez-le. Une confiance élevée vient d'une forte convergence entre les 3 étapes. Une confiance faible peut résulter de signaux contradictoires.
 
-Sur la base de cette analyse multi-modèles simulée, veuillez fournir :
-1.  predictions: Un tableau de 5 numéros distincts prédits pour le tirage.
-2.  reasoning: Une explication détaillée de la méthodologie hybride simulée. Articulez comment chaque modèle (XGBoost pour les fréquences/écarts, Random Forest pour les interactions, RNN-LSTM pour les tendances) a contribué à la sélection finale.
-3.  confidenceScore: Un score de confiance qualitatif pour ces prédictions (par exemple, "Élevé", "Moyen", "Faible", ou un score numérique comme 4/5).
-4.  confidenceReasoning: Expliquez brièvement pourquoi ce niveau de confiance a été attribué, en vous basant sur la convergence (ou la divergence) des résultats des trois modèles simulés.
-
-Produisez les résultats strictement au format JSON, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu.`,
+Produisez les résultats finaux **strictement au format JSON**, en respectant le schéma de sortie. Assurez-vous que le JSON est valide et ne contient aucun texte superflu avant ou après.`,
 });
 
 const generateDrawPredictionsFlow = ai.defineFlow(
