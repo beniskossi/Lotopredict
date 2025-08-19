@@ -46,16 +46,14 @@ export default function AdminImportPage() {
       return expectedCount === 0 ? [] : null; // Allow empty for optional machine numbers
     }
     const numbers = numbersStr.split(';').map(n => n.trim()).filter(n => n !== "").map(Number);
-    if (numbers.some(isNaN) || (expectedCount > 0 && numbers.length !== expectedCount)) {
-      return null; // Invalid numbers or wrong count
-    }
-    if (numbers.length === 0 && expectedCount > 0) return null; // if required but empty
-    if (numbers.length > 0 && numbers.length !== expectedCount && expectedCount !== 0) return null; // if partially filled but not meeting count for required
-    if (numbers.length === 0 && expectedCount === 0) return []; // Correctly handle empty optional machine numbers
-
-    // Basic range check
+    if (numbers.some(isNaN)) return null;
     if (numbers.some(n => n < 1 || n > 90)) return null;
-    
+
+    if (expectedCount > 0 && numbers.length !== expectedCount) return null;
+    if (numbers.length > 0 && numbers.length !== expectedCount && expectedCount !== 0) return null;
+
+    if (numbers.length === 0 && expectedCount === 0) return [];
+
     return numbers;
   };
 
@@ -63,10 +61,10 @@ export default function AdminImportPage() {
     const results: ImportResult[] = [];
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
-      const displayRecord = record.originalLine || `JSON Record ${record.originalIndex! + 1}`;
+      const displayRecord = record.originalLine || `Ligne JSON ${record.originalIndex! + 1}`;
       try {
         await addManualLottoResult(record.input);
-        results.push({ status: 'success', message: `Record importé avec succès: ${displayRecord}` });
+        results.push({ status: 'success', message: `Importation réussie : ${displayRecord}` });
       } catch (error: any) {
         results.push({ status: 'error', message: `Erreur pour ${displayRecord}: ${error.message}`, originalRecord: displayRecord });
       }
@@ -93,17 +91,15 @@ export default function AdminImportPage() {
 
     try {
       if (file.type === "text/csv" || file.name.endsWith(".csv")) {
-        const lines = fileContent.split(/\r\n|\n/);
-        if (lines.length <= 1 && lines[0].trim() === "") { // Handle empty or header-only CSV
+        const lines = fileContent.split(/\r\n|\n/).filter(line => line.trim() !== ''); // Ignore empty lines
+        if (lines.length <= 1) { // Assuming first line is header
            throw new Error("Le fichier CSV est vide ou ne contient que des en-têtes.");
         }
-        // const header = lines[0]; // Assuming first line is header, not strictly validated
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i];
-          if (!line.trim()) continue; // Skip empty lines
           const values = line.split(',');
           if (values.length < 3) { 
-             fileParseError += `Ligne ${i+1} ignorée: nombre de colonnes insuffisant. Attendu au moins 3 (date,apiDrawName,winningNumbers), obtenu ${values.length}. Ligne: "${line}"\n`;
+             fileParseError += `Ligne ${i+1} ignorée: pas assez de colonnes (attendu 3 ou 4). Ligne: "${line}"\n`;
              continue;
           }
 
@@ -111,26 +107,26 @@ export default function AdminImportPage() {
           
           const dateObj = dateFnsParse(dateStr, 'yyyy-MM-dd', new Date());
           if (!isDateValid(dateObj)) {
-            fileParseError += `Ligne ${i+1} ignorée: Format de date invalide "${dateStr}". Attendu YYYY-MM-DD.\n`;
+            fileParseError += `Ligne ${i+1} ignorée: format de date invalide "${dateStr}". Attendu YYYY-MM-DD.\n`;
             continue;
           }
 
           const normalizedApiDrawName = apiDrawNameFromFile.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
           const drawSlug = DRAW_SLUG_BY_SIMPLE_NAME_MAP[normalizedApiDrawName];
           if (!drawSlug) {
-            fileParseError += `Ligne ${i+1} ignorée: Nom de tirage "${apiDrawNameFromFile}" non reconnu.\n`;
+            fileParseError += `Ligne ${i+1} ignorée: nom de tirage inconnu "${apiDrawNameFromFile}".\n`;
             continue;
           }
 
           const winningNumbers = parseNumbersString(wnStr, 5);
           if (!winningNumbers) {
-            fileParseError += `Ligne ${i+1} ignorée: Numéros gagnants invalides "${wnStr}". Attendu 5 numéros (1-90) séparés par ';'.\n`;
+            fileParseError += `Ligne ${i+1} ignorée: numéros gagnants invalides "${wnStr}". Attendu 5 numéros (1-90) séparés par ';'.\n`;
             continue;
           }
           
-          const machineNumbers = parseNumbersString(mnStr, mnStr ? 5 : 0); // Expect 5 if mnStr is provided, 0 otherwise
+          const machineNumbers = parseNumbersString(mnStr, mnStr ? 5 : 0);
           if (mnStr && !machineNumbers) { 
-             fileParseError += `Ligne ${i+1} ignorée: Numéros machine invalides "${mnStr}". Si fournis, 5 numéros (1-90) séparés par ';' sont attendus.\n`;
+             fileParseError += `Ligne ${i+1} ignorée: numéros machine invalides "${mnStr}". Attendu 5 numéros (1-90) séparés par ';'.\n`;
              continue;
           }
 
@@ -152,31 +148,30 @@ export default function AdminImportPage() {
           }
           const dateObj = dateFnsParse(item.date, 'yyyy-MM-dd', new Date());
           if (!isDateValid(dateObj)) {
-            fileParseError += `Objet JSON ${index+1} ignoré: Format de date invalide "${item.date}". Attendu YYYY-MM-DD.\n`;
+            fileParseError += `Objet JSON ${index+1} ignoré: format de date invalide "${item.date}". Attendu YYYY-MM-DD.\n`;
             return;
           }
           
           const normalizedApiDrawName = String(item.apiDrawName).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
           const drawSlug = DRAW_SLUG_BY_SIMPLE_NAME_MAP[normalizedApiDrawName];
           if (!drawSlug) {
-            fileParseError += `Objet JSON ${index+1} ignoré: Nom de tirage "${item.apiDrawName}" non reconnu.\n`;
+            fileParseError += `Objet JSON ${index+1} ignoré: nom de tirage inconnu "${item.apiDrawName}".\n`;
             return;
           }
 
           if (!Array.isArray(item.winningNumbers) || item.winningNumbers.length !== 5 || item.winningNumbers.some((n:any) => typeof n !== 'number' || n < 1 || n > 90)) {
-            fileParseError += `Objet JSON ${index+1} ignoré: Numéros gagnants invalides. Attendu un tableau de 5 nombres (1-90).\n`;
+            fileParseError += `Objet JSON ${index+1} ignoré: numéros gagnants invalides. Attendu un tableau de 5 nombres (1-90).\n`;
             return;
           }
           
           let machineNumbers: number[] = [];
-          if (item.machineNumbers !== undefined && item.machineNumbers !== null) { // Check for presence
+          if (item.machineNumbers !== undefined && item.machineNumbers !== null) {
             if (!Array.isArray(item.machineNumbers) || (item.machineNumbers.length > 0 && item.machineNumbers.length !== 5) || item.machineNumbers.some((n:any) => typeof n !== 'number' || n < 1 || n > 90)) {
-                 fileParseError += `Objet JSON ${index+1} ignoré: Numéros machine invalides. Si fournis, doit être un tableau de 5 nombres (1-90).\n`;
+                 fileParseError += `Objet JSON ${index+1} ignoré: numéros machine invalides. Si fournis, doit être un tableau de 5 nombres (1-90).\n`;
                  return;
             }
-            machineNumbers = item.machineNumbers.length === 0 && item.machineNumbers !== undefined ? [] : item.machineNumbers; // Allow empty array if explicitly passed
+            machineNumbers = item.machineNumbers;
           }
-
 
           parsedRecords.push({
             input: { drawSlug, date: dateObj, winningNumbers: item.winningNumbers, machineNumbers },
@@ -192,26 +187,24 @@ export default function AdminImportPage() {
     
     let finalResults: ImportResult[] = [];
     if (parsedRecords.length > 0) {
-        const processingResults = await processRecords(parsedRecords.filter(pr => pr.input.drawSlug)); 
+        const processingResults = await processRecords(parsedRecords); 
         finalResults.push(...processingResults);
     }
 
     if(fileParseError) {
-        finalResults.unshift({status: 'error', message: `Erreurs de pré-traitement ou de formatage du fichier:\n${fileParseError.trim()}`});
+        finalResults.unshift({status: 'error', message: `Erreurs de pré-traitement du fichier:\n${fileParseError.trim()}`});
     }
     
     if (parsedRecords.length === 0 && !fileParseError && finalResults.length === 0) {
-        finalResults.push({status: 'error', message: "Aucun enregistrement valide n'a été trouvé dans le fichier pour l'importation."});
+        finalResults.push({status: 'error', message: "Aucun enregistrement valide n'a été trouvé dans le fichier."});
     }
     
     setImportResults(finalResults);
 
     const successCount = finalResults.filter(r => r.status === 'success').length;
-    const errorDuringProcessingCount = finalResults.filter(r => r.status === 'error' && r.message.startsWith('Erreur pour')).length;
-    const fileLevelErrorCount = finalResults.filter(r => r.status === 'error' && !r.message.startsWith('Erreur pour')).length;
+    const errorCount = finalResults.length - successCount;
 
-
-    if (successCount > 0 && errorDuringProcessingCount === 0 && fileLevelErrorCount === 0) {
+    if (successCount > 0 && errorCount === 0) {
       toast({
         title: "Importation Réussie",
         description: `${successCount} enregistrement(s) importé(s) avec succès.`,
@@ -220,22 +213,21 @@ export default function AdminImportPage() {
        toast({
         variant: "default",
         title: "Importation Partielle",
-        description: `${successCount} enregistrement(s) importé(s). ${errorDuringProcessingCount + fileLevelErrorCount} erreur(s) au total. Voir détails ci-dessous.`,
+        description: `${successCount} succès, ${errorCount} erreur(s). Voir les détails ci-dessous.`,
       });
-    } else if (finalResults.length > 0) { // Only errors
+    } else if (finalResults.length > 0) {
       toast({
         variant: "destructive",
         title: "Échec de l'Importation",
-        description: `Aucun enregistrement n'a pu être importé. ${errorDuringProcessingCount + fileLevelErrorCount} erreur(s). Voir détails ci-dessous.`,
+        description: `Aucun enregistrement n'a pu être importé. ${errorCount} erreur(s) détectée(s).`,
       });
     }
-    // If finalResults is empty (e.g. empty file was submitted and caught early), a toast might have already been shown or no action needed.
 
     setIsLoading(false);
-    setFile(null); // Clear the file from state
+    setFile(null); 
     const fileInput = document.getElementById('file-upload') as HTMLInputElement;
     if (fileInput) {
-        fileInput.value = ''; // Reset the file input field
+        fileInput.value = '';
     }
   };
 
@@ -260,12 +252,11 @@ export default function AdminImportPage() {
             <CardTitle>Téléverser un Fichier de Données</CardTitle>
             <CardDescription>
               Sélectionnez un fichier CSV ou JSON contenant les résultats des tirages à importer.
-              Assurez-vous que le format du fichier correspond aux spécifications attendues.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="file-upload">Choisir un fichier (CSV, JSON)</Label>
+              <Label htmlFor="file-upload">Fichier (CSV, JSON)</Label>
               <Input
                 id="file-upload"
                 type="file"
@@ -278,18 +269,17 @@ export default function AdminImportPage() {
             </div>
             <Alert variant="default" className="border-primary/30 bg-primary/5">
               <FileUp className="h-4 w-4 text-primary" />
-              <AlertTitle className="text-primary">Format Attendu pour les Fichiers</AlertTitle>
+              <AlertTitle className="text-primary">Format Attendu</AlertTitle>
               <AlertDescription className="text-muted-foreground space-y-1 text-xs">
-                <p><strong>Pour CSV :</strong> Ligne d'en-tête ignorée. Les colonnes doivent être dans cet ordre : <code>date,apiDrawName,winningNumbers,machineNumbers</code>.
+                <p><strong>CSV :</strong> En-tête requis mais ignoré. Colonnes: <code>date,apiDrawName,winningNumbers,machineNumbers</code>.
                 La date doit être au format <code>YYYY-MM-DD</code>.
-                <code>apiDrawName</code> est le nom simple du tirage (ex: "Réveil", "Étoile", insensible à la casse et aux accents).
-                <code>winningNumbers</code> : chaîne de 5 numéros (1-90) séparés par des points-virgules (ex: <code>1;2;3;4;5</code>). Requis.
-                <code>machineNumbers</code> : chaîne de 5 numéros (1-90) séparés par des points-virgules. Optionnel ; laissez vide ou omettez la colonne si non applicable.</p>
-                <p><strong>Pour JSON :</strong> Un tableau d'objets. Chaque objet doit avoir :
-                 <code>date</code> (chaîne <code>YYYY-MM-DD</code>),
-                 <code>apiDrawName</code> (chaîne, nom simple du tirage, ex: "Réveil", insensible à la casse et aux accents),
-                 <code>winningNumbers</code> (tableau de 5 nombres, 1-90). Requis.
-                 <code>machineNumbers</code> (tableau de 5 nombres, 1-90). Optionnel ; peut être un tableau vide ou omis si non applicable.</p>
+                <code>apiDrawName</code> est le nom simple du tirage (ex: "Réveil", insensible à la casse et aux accents).
+                <code>winningNumbers</code> : 5 numéros (1-90) séparés par ';'.
+                <code>machineNumbers</code> : 5 numéros (1-90) séparés par ';'. Optionnel.</p>
+                <p><strong>JSON :</strong> Tableau d'objets avec clés <code>date</code> (string <code>YYYY-MM-DD</code>),
+                 <code>apiDrawName</code> (string, nom simple),
+                 <code>winningNumbers</code> (array de 5 nombres, 1-90).
+                 <code>machineNumbers</code> (array de 5 nombres, 1-90). Optionnel.</p>
               </AlertDescription>
             </Alert>
           </CardContent>
@@ -321,3 +311,5 @@ export default function AdminImportPage() {
     </div>
   );
 }
+
+    
