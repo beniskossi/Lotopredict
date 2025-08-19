@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
@@ -8,7 +9,7 @@ export interface Draw {
   name: string;
   time: string;
   slug: DrawSlug;
-  icon?: LucideIcon;
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
 export interface DaySchedule {

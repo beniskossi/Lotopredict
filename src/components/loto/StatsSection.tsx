@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -11,12 +11,15 @@ import type { NumberFrequency as NumberFrequencyType, HistoricalDataEntry } from
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
 import { LotoBall } from './LotoBall';
 import { Button } from '../ui/button';
-import { RefreshCw, CalendarIcon, Download } from 'lucide-react';
+import { RefreshCw, CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 
 interface StatsSectionProps {
   drawSlug: string;
@@ -30,16 +33,17 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
   const [allHistoricalData, setAllHistoricalData] = useState<HistoricalDataEntry[]>([]);
   const [filteredFrequencies, setFilteredFrequencies] = useState<NumberFrequencyType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{from?: Date, to?: Date}>({});
-
+  
+  const barChartRef = useRef<HTMLDivElement>(null);
   const drawName = getDrawNameBySlug(drawSlug);
 
   const loadAllHistoricalData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch a larger dataset for more meaningful statistics
       const hData = await fetchHistoricalData(drawSlug, 200); 
       setAllHistoricalData(hData);
     } catch (err) {
@@ -62,6 +66,7 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
     }
 
     const dataToProcess = allHistoricalData.filter(entry => {
+      if (!entry.date || !isValid(parseISO(entry.date))) return false;
       const entryDate = parseISO(entry.date);
       const isAfterStartDate = dateRange.from ? entryDate >= dateRange.from : true;
       const isBeforeEndDate = dateRange.to ? entryDate <= dateRange.to : true;
@@ -107,6 +112,82 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
   const clearFilters = () => {
     setDateRange({});
   }
+
+  const handleExportCSV = () => {
+    if (filteredFrequencies.length === 0) return;
+    setIsExporting(true);
+
+    const headers = ["Numero", "Frequence"];
+    const rows = filteredFrequencies.map(f => [f.number, f.frequency]);
+    
+    let csvContent = "data:text/csv;charset=utf-8," 
+        + headers.join(",") + "\n" 
+        + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const fileName = `statistiques_${drawSlug}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsExporting(false);
+  };
+  
+  const handleExportPDF = async () => {
+     if (filteredFrequencies.length === 0 || !barChartRef.current) return;
+     setIsExporting(true);
+     
+     const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+     
+     // Dynamically import html2canvas only when needed
+     const html2canvas = (await import('html2canvas')).default;
+     
+     const canvas = await html2canvas(barChartRef.current, { scale: 2 });
+     const imgData = canvas.toDataURL('image/png');
+     
+     // PDF Title
+     pdf.setFontSize(18);
+     pdf.text(`Statistiques pour: ${drawName}`, 14, 22);
+     pdf.setFontSize(11);
+     pdf.setTextColor(100);
+     const dateFilterText = dateRange.from 
+        ? `Période du ${format(dateRange.from, 'dd/MM/yyyy')} au ${dateRange.to ? format(dateRange.to, 'dd/MM/yyyy') : 'maintenant'}`
+        : 'Toutes les données';
+     pdf.text(dateFilterText, 14, 30);
+     
+     // Add chart image
+     const imgProps = pdf.getImageProperties(imgData);
+     const pdfWidth = pdf.internal.pageSize.getWidth();
+     const imgWidth = pdfWidth - 28; // with margins
+     const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+     pdf.addImage(imgData, 'PNG', 14, 40, imgWidth, imgHeight);
+
+     // Add tables
+    const tableStartY = 40 + imgHeight + 10;
+    autoTable(pdf, {
+        startY: tableStartY,
+        head: [['Numéro', 'Fréquence (Top 5)']],
+        body: top5Frequent.map(f => [f.number, f.frequency]),
+        theme: 'striped',
+        headStyles: { fillColor: [51, 102, 204] },
+    });
+    
+    autoTable(pdf, {
+        startY: (pdf as any).lastAutoTable.finalY + 10,
+        head: [['Numéro', 'Fréquence (Flop 5)']],
+        body: bottom5Frequent.map(f => [f.number, f.frequency]),
+        theme: 'striped',
+        headStyles: { fillColor: [255, 99, 132] },
+    });
+
+
+     const fileName = `statistiques_${drawSlug}_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+     pdf.save(fileName);
+     setIsExporting(false);
+  };
+
 
   return (
     <div className="space-y-6">
@@ -159,6 +240,7 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
                     onSelect={setDateRange}
                     numberOfMonths={2}
                     locale={fr}
+                    disabled={(date) => date > new Date() || date < new Date("2015-01-01")}
                   />
                 </PopoverContent>
               </Popover>
@@ -178,7 +260,7 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
             <p className="text-destructive">{error}</p>
           ) : filteredFrequencies.length > 0 ? (
             <>
-              <div>
+              <div ref={barChartRef} className="bg-card p-4 rounded-md">
                 <h3 className="text-xl font-semibold mb-3 text-foreground">Fréquence des Numéros (Top 15)</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={barChartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
@@ -272,16 +354,15 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
             </p>
           )}
         </CardContent>
-         <CardFooter className="flex items-center space-x-2">
-            <Button variant="outline" disabled>
-                <Download className="mr-2 h-4 w-4" /> Exporter en CSV
+         <CardFooter className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={handleExportCSV} disabled={isExporting || isLoading || filteredFrequencies.length === 0}>
+                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Exporter en CSV
             </Button>
-            <Button variant="outline" disabled>
-                <Download className="mr-2 h-4 w-4" /> Exporter en PDF
+            <Button variant="outline" onClick={handleExportPDF} disabled={isExporting || isLoading || filteredFrequencies.length === 0}>
+                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Exporter en PDF
             </Button>
-            <p className="text-xs text-muted-foreground">
-                (Fonctionnalité à venir)
-            </p>
         </CardFooter>
       </Card>
     </div>
