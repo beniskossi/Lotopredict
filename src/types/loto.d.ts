@@ -67,9 +67,22 @@ export interface ManualAddResultFormInput {
   mn5?: number;
 }
 
+export type ManualEditResultFormInput = ManualAddResultFormInput;
+
+
 export interface ManualLottoResultInput {
   drawSlug: string;
   date: Date; // JS Date object from form
   winningNumbers: number[];
   machineNumbers?: number[]; // Optional, will be empty array if not provided
+}
+
+
+export interface PredictionFeedback {
+    id: string;
+    drawSlug: string;
+    prediction: number[];
+    isRelevant: boolean;
+    reasoning?: string; // Optional text feedback
+    createdAt: Timestamp;
 }

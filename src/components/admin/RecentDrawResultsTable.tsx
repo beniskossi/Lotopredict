@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { LotoBall } from '@/components/loto/LotoBall';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ListCollapse, AlertCircle, Trash2 } from "lucide-react";
+import { ListCollapse, AlertCircle, Trash2, Pencil } from "lucide-react";
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ScrollArea } from '../ui/scroll-area';
@@ -21,9 +21,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import Link from 'next/link';
 
 const RESULTS_TO_SHOW = 20;
 
@@ -162,8 +162,14 @@ export default function RecentDrawResultsTable() {
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                    {result.fetchedAt ? format(result.fetchedAt.toDate(), 'dd/MM/yy HH:mm', { locale: fr }) : 'N/A'}
                 </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(result)} aria-label="Supprimer le tirage">
+                <TableCell className="text-right space-x-1">
+                   <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/admin/results/edit/${result.docId}`}>
+                         <Pencil className="h-4 w-4 text-primary" />
+                         <span className="sr-only">Modifier le tirage</span>
+                      </Link>
+                   </Button>
+                   <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(result)} aria-label="Supprimer le tirage">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>

@@ -1,5 +1,5 @@
 
-import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence } from '@/types/loto';
+import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence, ManualEditResultFormInput } from '@/types/loto';
 import { DRAW_SCHEDULE, ALL_DRAW_NAMES_MAP, getDrawNameBySlug, DRAW_SLUG_BY_SIMPLE_NAME_MAP } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture } from 'date-fns';
 import fr from 'date-fns/locale/fr';
@@ -20,13 +20,20 @@ import {
   Timestamp,
   startAfter,
   addDoc,
+  updateDoc,
   type QueryConstraint,
   type QueryDocumentSnapshot
 } from "firebase/firestore";
+import {PredictionFeedback} from "@/types/loto";
 
 const RESULTS_COLLECTION_NAME = 'lottoResults';
+const PREDICTION_CACHE_COLLECTION_NAME = 'predictionCache';
+const PREDICTION_FEEDBACK_COLLECTION_NAME = 'predictionFeedback';
+
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_HISTORICAL_FETCH_LIMIT = 100;
+const PREDICTION_CACHE_TTL_MINUTES = 60; // Cache predictions for 1 hour
+
 
 const canonicalDrawNameMap = new Map<string, string>();
 DRAW_SCHEDULE.forEach(daySchedule => {
@@ -70,8 +77,7 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
         url = `${baseUrl}?month=${monthName}-${year}`;
     }
 
-    // This is a common pattern for local development to avoid CORS issues.
-    // In production, this might need a different strategy (e.g., a proper backend proxy).
+    // Using a CORS proxy for development/server-side fetching. Replace if running in a different environment.
     const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
     const requestUrl = `${proxyUrl}${url}`;
     
@@ -81,7 +87,8 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to fetch from external API: ${response.status} ${response.statusText}`);
+            console.error(`External API at ${url} failed with status: ${response.status}`);
+            return []; // Fail gracefully, don't throw
         }
         
         const resultsData = await response.json();
@@ -99,6 +106,7 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
             for (const dailyResult of week.drawResultsDaily) {
                 const dateStr = dailyResult.date;
                 const dateParts = dateStr.split(' ');
+                // Handle cases like "Lundi 01/07"
                 const dayMonth = dateParts.length > 1 ? dateParts[1] : dateParts[0];
                 
                 let drawDate: Date | null = null;
@@ -155,9 +163,7 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
 async function _saveDrawsToFirestore(draws: Omit<FirestoreDrawDoc, 'fetchedAt'| 'docId'>[]): Promise<void> {
     if (!draws || draws.length === 0) return;
 
-    const currentUser = auth.currentUser;
     const batch = writeBatch(db);
-    const unauthenticatedWritePromises: Array<Promise<void>> = [];
     const uniqueDrawsMap = new Map<string, Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>>();
 
     draws.forEach(draw => {
@@ -238,10 +244,12 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
   try {
     let querySnapshot = await getDocs(q);
 
-    if (querySnapshot.empty) {
+    // If initial query for the page is empty, try to sync from API
+    if (querySnapshot.empty && !startAfterDoc) {
         const syncMonth = year && month ? `${year}-${String(month).padStart(2, '0')}` : format(new Date(), 'yyyy-MM');
         const apiData = await _fetchAndProcessExternalApi(syncMonth);
         await _saveDrawsToFirestore(apiData);
+        // Retry the query after attempting to sync
         querySnapshot = await getDocs(q);
     }
 
@@ -262,6 +270,7 @@ export const fetchDrawData = async (params: FetchDrawDataParams): Promise<FetchD
 
   } catch (error) {
     console.error(`Error fetching draws for ${canonicalDrawName} (slug: ${drawSlug}):`, error);
+    // Return an empty result on error to prevent crashing the UI
     return { results: [], lastDocSnapshot: null };
   }
 };
@@ -283,12 +292,15 @@ export const fetchHistoricalData = async (drawSlug: string, count: number = 50):
     try {
         let querySnapshot = await getDocs(q);
 
+        // If we get no data, try to backfill with API data for the current and previous month
         if (querySnapshot.empty) {
+            console.log(`No historical data for ${canonicalDrawName}, attempting to backfill...`);
             const currentMonth = format(new Date(), 'yyyy-MM');
             const prevMonth = format(subMonths(new Date(), 1), 'yyyy-MM');
             const apiDataCurrent = await _fetchAndProcessExternalApi(currentMonth);
             const apiDataPrev = await _fetchAndProcessExternalApi(prevMonth);
             await _saveDrawsToFirestore([...apiDataCurrent, ...apiDataPrev]);
+            // Retry query after backfill attempt
             querySnapshot = await getDocs(q);
         }
         
@@ -363,6 +375,46 @@ export async function addManualLottoResult(input: ManualLottoResultInput): Promi
     return docId;
 }
 
+export async function updateLottoResult(docId: string, input: ManualLottoResultInput): Promise<void> {
+    const { drawSlug, date, winningNumbers, machineNumbers } = input;
+    const apiDrawName = getApiDrawNameFromSlug(drawSlug);
+    if (!apiDrawName) throw new Error("Invalid draw slug provided.");
+    if (!isValid(date)) throw new Error("Invalid date provided.");
+
+    const newFormattedDate = format(date, 'yyyy-MM-dd');
+    const newDocId = constructLottoResultDocId(newFormattedDate, apiDrawName);
+    
+    const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
+    
+    const dataToUpdate = {
+        apiDrawName,
+        date: newFormattedDate,
+        winningNumbers,
+        machineNumbers: machineNumbers || [],
+        fetchedAt: serverTimestamp() as Timestamp, // Update the timestamp
+    };
+
+    if (docId !== newDocId) {
+        // Date or Draw Name has changed, which changes the document ID.
+        // We must delete the old document and create a new one.
+        const newDocRef = doc(db, RESULTS_COLLECTION_NAME, newDocId);
+        const newDocSnap = await getDoc(newDocRef);
+        if (newDocSnap.exists()) {
+            throw new Error(`Un autre résultat pour le tirage ${apiDrawName} à la date ${newFormattedDate} existe déjà.`);
+        }
+        
+        const batch = writeBatch(db);
+        batch.delete(docRef); // Delete the old document
+        batch.set(newDocRef, dataToUpdate); // Create the new one
+        await batch.commit();
+
+    } else {
+        // The ID hasn't changed, we can just update the existing document.
+        await updateDoc(docRef, dataToUpdate);
+    }
+}
+
+
 export async function deleteLottoResult(docId: string): Promise<void> {
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
     await deleteDoc(docRef);
@@ -376,4 +428,35 @@ export async function fetchRecentLottoResults(count: number): Promise<FirestoreD
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() } as FirestoreDrawDoc));
+}
+
+
+export async function savePredictionFeedback(feedback: Omit<PredictionFeedback, 'createdAt' | 'id'>): Promise<void> {
+    try {
+        await addDoc(collection(db, PREDICTION_FEEDBACK_COLLECTION_NAME), {
+            ...feedback,
+            createdAt: serverTimestamp() as Timestamp,
+        });
+    } catch (error) {
+        console.error("Error saving prediction feedback:", error);
+        // Optionally re-throw or handle as needed by the UI
+    }
+}
+
+
+/**
+ * Fetches a single lotto result by its document ID.
+ */
+export async function fetchLottoResultById(docId: string): Promise<FirestoreDrawDoc | null> {
+    const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
+    try {
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return { docId: docSnap.id, ...docSnap.data() } as FirestoreDrawDoc;
+        }
+        return null;
+    } catch (error) {
+        console.error(`Error fetching document with ID ${docId}:`, error);
+        throw error;
+    }
 }
