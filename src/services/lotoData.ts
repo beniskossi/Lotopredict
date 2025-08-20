@@ -374,7 +374,7 @@ export async function updateLottoResult(docId: string, input: ManualLottoResultI
     
     const docRef = doc(db, RESULTS_COLLECTION_NAME, docId);
     
-    const dataToUpdate = {
+    const dataToUpdate: Omit<FirestoreDrawDoc, 'docId' | 'fetchedAt'> & { fetchedAt: Timestamp } = {
         apiDrawName,
         date: newFormattedDate,
         winningNumbers,
@@ -383,18 +383,21 @@ export async function updateLottoResult(docId: string, input: ManualLottoResultI
     };
 
     if (docId !== newDocId) {
+        // If the ID changes (because date or name changed), we need to check if the new destination is free
         const newDocRef = doc(db, RESULTS_COLLECTION_NAME, newDocId);
         const newDocSnap = await getDoc(newDocRef);
         if (newDocSnap.exists()) {
             throw new Error(`Un autre résultat pour le tirage ${apiDrawName} à la date ${newFormattedDate} existe déjà.`);
         }
         
+        // Use a batch write to delete the old doc and create the new one atomically
         const batch = writeBatch(db);
         batch.delete(docRef);
         batch.set(newDocRef, dataToUpdate);
         await batch.commit();
 
     } else {
+        // If the ID is the same, just update the existing document
         await updateDoc(docRef, dataToUpdate);
     }
 }

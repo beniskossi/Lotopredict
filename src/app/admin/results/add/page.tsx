@@ -35,13 +35,8 @@ const numberSchema = z.preprocess(
 const optionalMachineNumberSchema = z.preprocess(
   (val) => {
     if (val === undefined || val === null || String(val).trim() === "") {
-      // If the value from react-hook-form is already undefined (for an empty field),
-      // or if it's null, or an empty/whitespace string,
-      // then Zod should treat it as undefined for validation purposes.
       return undefined;
     }
-    // For any other case (a number, a numeric string, or a non-numeric string that will become NaN),
-    // attempt to convert to Number. z.number() will then handle validation or type errors.
     return Number(val);
   },
   z.union([
@@ -72,14 +67,11 @@ const AddResultSchema = z.object({
 })
 .superRefine((data, ctx) => {
   const winningNumbers = [data.wn1, data.wn2, data.wn3, data.wn4, data.wn5].filter(n => n !== undefined) as number[];
-  if (winningNumbers.length !== 5) {
-    // This will be caught by individual field 'Requis' if not for a general error
-  } else if (new Set(winningNumbers).size !== 5) {
+  if (winningNumbers.length === 5 && new Set(winningNumbers).size !== 5) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Les numéros gagnants doivent être distincts.", path: ["wn1"] });
   }
 
   const machineNumbers = [data.mn1, data.mn2, data.mn3, data.mn4, data.mn5].filter(n => n !== undefined) as number[];
-  
   const providedMachineNumbersCount = machineNumbers.length;
 
   if (providedMachineNumbersCount > 0 && providedMachineNumbersCount < 5) {
@@ -88,7 +80,7 @@ const AddResultSchema = z.object({
     if (new Set(machineNumbers).size !== 5) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Les numéros machine doivent être distincts.", path: ["mn1"] });
     }
-    // Check for overlap only if both sets are complete
+    
     if (winningNumbers.length === 5) {
         const wnSet = new Set(winningNumbers);
         for (const mn of machineNumbers) {
@@ -111,7 +103,6 @@ export default function AddResultPage() {
     resolver: zodResolver(AddResultSchema),
     defaultValues: {
       drawSlug: '',
-      // date: new Date(), // Default to today, or leave undefined for user to pick
     },
   });
 
@@ -120,27 +111,13 @@ export default function AddResultPage() {
     const winningNumbers = [values.wn1, values.wn2, values.wn3, values.wn4, values.wn5].filter(n => n !== undefined) as number[];
     const machineNumbersRaw = [values.mn1, values.mn2, values.mn3, values.mn4, values.mn5];
     
-    // Determine if machineNumbers should be included based on whether ALL mn fields are filled or ALL are empty (undefined)
-    const allMnFieldsAreProvided = machineNumbersRaw.every(n => n !== undefined && n !== null && !isNaN(n));
-    const allMnFieldsAreEmpty = machineNumbersRaw.every(n => n === undefined);
-
-    let machineNumbers: number[] | undefined;
-    if (allMnFieldsAreProvided && machineNumbersRaw.filter(n => n !== undefined).length === 5) {
-        machineNumbers = machineNumbersRaw.filter(n => n !== undefined) as number[];
-    } else if (allMnFieldsAreEmpty) {
-        machineNumbers = undefined; // Explicitly undefined if all are empty
-    } else {
-        // This case should be caught by superRefine ("Si des numéros machine sont fournis, les 5 doivent être remplis.")
-        // but as a safeguard for payload construction:
-        machineNumbers = undefined; 
-    }
-
+    const machineNumbers = machineNumbersRaw.every(n => n !== undefined) ? machineNumbersRaw.filter(n => n !== undefined) as number[] : [];
 
     const payload: ManualLottoResultInput = {
       drawSlug: values.drawSlug,
       date: values.date,
       winningNumbers: winningNumbers,
-      machineNumbers: machineNumbers, // This will be undefined if not all 5 are provided, or an array of 5 numbers
+      machineNumbers: machineNumbers.length === 5 ? machineNumbers : undefined,
     };
 
     try {
@@ -287,12 +264,11 @@ export default function AddResultPage() {
                   {numberInputFields('wn', 5, 'NG')}
                 </div>
                  <FormMessage>{form.formState.errors.wn1?.message?.toString().includes("distincts") && form.formState.errors.wn1?.message}</FormMessage>
-
               </div>
               
               <div>
                 <h3 className="text-lg font-semibold mb-2 text-foreground">Numéros Machine (Optionnel)</h3>
-                <p className="text-sm text-muted-foreground mb-2">Laissez vide si non applicable ou si vous ne souhaitez pas les entrer. Si vous en entrez un, les 5 sont requis.</p>
+                <p className="text-sm text-muted-foreground mb-2">Laissez vide si non applicable. Si vous en entrez un, les 5 sont requis.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                   {numberInputFields('mn', 5, 'NM')}
                 </div>
