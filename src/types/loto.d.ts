@@ -3,7 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
-export type DrawSlug = string; // Added this type for clarity
+export type DrawSlug = string;
 
 export interface Draw {
   name: string;
@@ -26,7 +26,7 @@ export interface DrawResult {
 }
 
 export interface HistoricalDataEntry extends DrawResult {
-  drawName: DrawSlug; // This is the drawSlug
+  drawName: DrawSlug;
 }
 
 export interface NumberFrequency {
@@ -52,8 +52,8 @@ export interface FirestoreDrawDoc {
   fetchedAt: Timestamp;
 }
 
-// For the manual add result form
-export interface ManualAddResultFormInput {
+// For the manual add/edit result form before it's processed for submission
+export interface ResultFormInput {
   drawSlug: string;
   date: Date;
   wn1?: number;
@@ -68,9 +68,8 @@ export interface ManualAddResultFormInput {
   mn5?: number;
 }
 
-export type ManualEditResultFormInput = ManualAddResultFormInput;
 
-
+// Final payload for adding/updating a result
 export interface ManualLottoResultInput {
   drawSlug: string;
   date: Date; // JS Date object from form

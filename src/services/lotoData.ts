@@ -1,6 +1,6 @@
 
-import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence, ManualEditResultFormInput, PredictionFeedback } from '@/types/loto';
-import { DRAW_SCHEDULE, ALL_DRAW_NAMES_MAP, getDrawNameBySlug, DRAW_SLUG_BY_SIMPLE_NAME_MAP } from '@/lib/lotoDraws.tsx';
+import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResultInput, NumberCoOccurrence, PredictionFeedback } from '@/types/loto';
+import { DRAW_SCHEDULE, getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture } from 'date-fns';
 import fr from 'date-fns/locale/fr';
 import { db } from '@/lib/firebase';
@@ -90,12 +90,12 @@ async function _fetchAndProcessExternalApi(yearMonth?: string): Promise<Omit<Fir
         }
         
         const resultsData = await response.json();
-        if (!resultsData || !resultsData.success) {
+        if (!resultsData || !resultsData.success || !resultsData.drawsResultsWeekly) {
             console.error(`External API at ${url} returned unsuccessful or invalid response`, resultsData);
             return [];
         }
 
-        const drawsResultsWeekly = resultsData.drawsResultsWeekly || [];
+        const drawsResultsWeekly = resultsData.drawsResultsWeekly;
         const firestoreReadyResults: Omit<FirestoreDrawDoc, 'fetchedAt' | 'docId'>[] = [];
         const currentYear = getYear(new Date());
 
