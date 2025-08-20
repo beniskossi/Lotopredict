@@ -1,45 +1,52 @@
 
-// A basic service worker for caching static assets
+// A basic service worker for caching assets for offline use.
 
 const CACHE_NAME = 'lotopredict-cache-v1';
 const urlsToCache = [
   '/',
-  '/manifest.json',
-  '/favicon.ico',
-  // Add other important assets here.
-  // Note: Next.js static assets often have hashes in their names,
-  // making manual caching difficult. This is a basic setup.
-  // For a more robust solution, a build tool integration like @ducanh2912/next-pwa is recommended.
+  '/admin/dashboard',
+  '/styles/globals.css'
+  // Add other critical assets you want to cache initially
+  // Be careful not to cache too much, especially large files or dynamic content
 ];
 
-self.addEventListener('install', (event) => {
-  // Perform install steps
+// Install event: open a cache and add the core assets to it.
+self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
+      .then(cache => {
+        // console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-self.addEventListener('fetch', (event) => {
+// Fetch event: serve cached content when offline.
+self.addEventListener('fetch', event => {
+  // We only want to cache GET requests.
+  if (event.request.method !== 'GET') {
+    return;
+  }
+  
+  // For navigation requests, use a network-first strategy.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // For other requests (CSS, JS, images), use a cache-first strategy.
   event.respondWith(
     caches.match(event.request)
-      .then((response) => {
+      .then(response => {
         // Cache hit - return response
         if (response) {
           return response;
         }
 
-        // IMPORTANT: Clone the request. A request is a stream and
-        // can only be consumed once. Since we are consuming this
-        // once by cache and once by the browser for fetch, we need
-        // to clone the response.
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then(
-          (response) => {
+        return fetch(event.request).then(
+          response => {
             // Check if we received a valid response
             if (!response || response.status !== 200 || response.type !== 'basic') {
               return response;
@@ -52,7 +59,7 @@ self.addEventListener('fetch', (event) => {
             const responseToCache = response.clone();
 
             caches.open(CACHE_NAME)
-              .then((cache) => {
+              .then(cache => {
                 cache.put(event.request, responseToCache);
               });
 
@@ -63,12 +70,13 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-self.addEventListener('activate', (event) => {
+// Activate event: clean up old caches.
+self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
+        cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
             return caches.delete(cacheName);
           }
