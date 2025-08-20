@@ -10,7 +10,7 @@ import {
   signOut as firebaseSignOut,
   type AuthError
 } from 'firebase/auth';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -27,7 +27,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -37,21 +36,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (!loading && !currentUser && pathname?.startsWith('/admin') && pathname !== '/admin/login') {
-      router.push('/admin/login');
-    }
-    if (!loading && currentUser && pathname === '/admin/login') {
-      router.push('/admin/dashboard');
-    }
-  }, [currentUser, loading, pathname, router]);
-
   const login = async (email: string, pass: string) => {
     setLoading(true);
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email, pass);
-      // onAuthStateChanged will handle currentUser state and redirection
+      // onAuthStateChanged will handle setting the user and loading state
+      router.push('/admin/dashboard');
     } catch (err) {
       const authError = err as AuthError;
       console.error("Login error:", authError);
@@ -60,9 +51,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setError("Erreur de connexion. Veuillez réessayer.");
       }
-      setLoading(false); // Ensure loading is false on error
+    } finally {
+        setLoading(false);
     }
-    // setLoading will be set to false by onAuthStateChanged
   };
 
   const logout = async () => {
@@ -70,14 +61,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     try {
       await firebaseSignOut(auth);
-      setCurrentUser(null); // Explicitly set user to null
       router.push('/admin/login'); // Redirect to login after logout
     } catch (err) {
       const authError = err as AuthError;
       console.error("Logout error:", authError);
       setError("Erreur de déconnexion.");
     } finally {
-      setLoading(false);
+      // onAuthStateChanged will set loading to false after user is cleared
     }
   };
 
@@ -88,19 +78,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     logout,
     error,
   };
-
-  // Render children only if loading is false and (user is authenticated for admin pages OR it's a non-admin page OR it's the login page)
-  const isAdminPage = pathname?.startsWith('/admin');
-  const isLoginPage = pathname === '/admin/login';
-
-  if (loading && isAdminPage && !isLoginPage) {
-      return (
-        <div className="flex justify-center items-center min-h-screen">
-          <p>Chargement de la session admin...</p>
-        </div>
-      );
-  }
-
 
   return (
     <AuthContext.Provider value={value}>

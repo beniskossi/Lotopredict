@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { LogIn, AlertCircle } from "lucide-react";
+import { LogIn, AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
@@ -23,11 +24,17 @@ export default function AdminLoginPage() {
   };
   
   // If user is already logged in and tries to access /admin/login, redirect to dashboard
-  if (!loading && currentUser) {
-    router.push('/admin/dashboard');
+  useEffect(() => {
+    if (!loading && currentUser) {
+      router.replace('/admin/dashboard');
+    }
+  }, [loading, currentUser, router]);
+
+  if (loading || currentUser) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <p>Redirection...</p>
+        <Loader2 className="mr-2 h-8 w-8 animate-spin" />
+        <p>Redirection en cours...</p>
       </div>
     );
   }
@@ -79,7 +86,12 @@ export default function AdminLoginPage() {
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Connexion en cours...' : 'Se Connecter'}
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connexion en cours...
+                </>
+              ) : 'Se Connecter'}
             </Button>
           </CardFooter>
         </form>
