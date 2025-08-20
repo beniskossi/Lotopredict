@@ -44,6 +44,7 @@ export function StatsSection({ drawSlug }: StatsSectionProps) {
     setIsLoading(true);
     setError(null);
     try {
+      // Fetch a larger dataset for more accurate stats
       const hData = await fetchHistoricalData(drawSlug, 200); 
       setAllHistoricalData(hData);
     } catch (err) {
