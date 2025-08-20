@@ -3,7 +3,7 @@ import type { DrawResult, HistoricalDataEntry, FirestoreDrawDoc, ManualLottoResu
 import { DRAW_SCHEDULE, ALL_DRAW_NAMES_MAP, getDrawNameBySlug, DRAW_SLUG_BY_SIMPLE_NAME_MAP } from '@/lib/lotoDraws.tsx';
 import { format, subMonths, parse as dateFnsParse, isValid, getYear, parseISO, lastDayOfMonth, startOfMonth, isFuture } from 'date-fns';
 import fr from 'date-fns/locale/fr';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import {
   collection,
   doc,
@@ -492,5 +492,3 @@ export async function findDrawsByNumbers(drawSlug: string, numbers: number[]): P
         throw new Error("Failed to search for combinations.");
     }
 }
-
-    

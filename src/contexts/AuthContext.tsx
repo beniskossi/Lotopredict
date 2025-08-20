@@ -4,12 +4,8 @@
 import type { User } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { auth } from '@/lib/firebase';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  signOut as firebaseSignOut,
-  type AuthError
-} from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import { signIn, signOut } from '@/services/authService';
 import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
@@ -40,17 +36,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
-      // onAuthStateChanged will handle setting the user and loading state
-      router.push('/admin/dashboard');
-    } catch (err) {
-      const authError = err as AuthError;
-      console.error("Login error:", authError);
-      if (authError.code === 'auth/user-not-found' || authError.code === 'auth/wrong-password' || authError.code === 'auth/invalid-credential') {
-        setError("Email ou mot de passe incorrect.");
-      } else {
-        setError("Erreur de connexion. Veuillez réessayer.");
-      }
+      await signIn(email, pass);
+      // onAuthStateChanged will handle setting the user and then the
+      // AdminAuthGuard will handle the redirection.
+      // We no longer need to push the route here.
+    } catch (err: any) {
+      setError(err.message);
     } finally {
         setLoading(false);
     }
@@ -60,12 +51,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     setError(null);
     try {
-      await firebaseSignOut(auth);
+      await signOut();
       router.push('/admin/login'); // Redirect to login after logout
-    } catch (err) {
-      const authError = err as AuthError;
-      console.error("Logout error:", authError);
-      setError("Erreur de déconnexion.");
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       // onAuthStateChanged will set loading to false after user is cleared
     }
