@@ -11,7 +11,7 @@ import { generateDrawPredictions, type GenerateDrawPredictionsOutput, type Gener
 import { fetchHistoricalData, savePredictionFeedback } from '@/services/lotoData';
 import type { HistoricalDataEntry } from '@/types/loto';
 import { getDrawNameBySlug } from '@/lib/lotoDraws.tsx';
-import { Wand2, Loader2, HelpCircle, Info, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Wand2, Loader2, HelpCircle, Info, ThumbsUp, ThumbsDown, CheckCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from '../ui/scroll-area';
@@ -175,15 +175,9 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
               <Skeleton className="h-32 w-full" />
             ) : (
               <ScrollArea className="h-32 w-full rounded-md border p-2">
-                <Textarea
-                  id="historicalData"
-                  value={historicalData}
-                  readOnly
-                  placeholder="Les données historiques seront chargées ici..."
-                  rows={5}
-                  className="resize-none"
-                  aria-describedby="historicalDataHint"
-                />
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+                  {historicalData || "Les données historiques seront chargées ici..."}
+                </pre>
               </ScrollArea>
             )}
             <p id="historicalDataHint" className="text-xs text-muted-foreground mt-1">
@@ -207,21 +201,28 @@ export function PredictionSection({ drawSlug }: PredictionSectionProps) {
               <div className="space-y-4 pt-4">
                 <Skeleton className="h-8 w-1/2" />
                 <div className="flex space-x-2">
-                  {[...Array(5)].map((_, i) => <Skeleton key={i} className="w-10 h-10 rounded-full" />)}
+                  {[...Array(5)].map((_, i) => <Skeleton key={i} className="w-12 h-12 rounded-full" />)}
                 </div>
-                <Skeleton className="h-6 w-1/3" />
+                <Skeleton className="h-6 w-1/3 mt-4" />
                 <Skeleton className="h-20 w-full" />
+                 <Alert variant="default" className="mt-4">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <AlertTitle>Génération en cours</AlertTitle>
+                    <AlertDescription>
+                       L'IA analyse les données... Cette opération peut prendre quelques instants.
+                    </AlertDescription>
+                </Alert>
               </div>
           )}
 
           {predictions && (
             <div className="pt-4 space-y-4">
               <h3 className="text-xl font-semibold text-foreground">Prédictions Suggérées :</h3>
-              <div className="flex space-x-2 md:space-x-3">
-                {predictions.predictions.map((num, index) => <LotoBall key={`pred-${num}-${index}`} number={num} />)}
+              <div className="flex space-x-2 md:space-x-3 flex-wrap gap-y-2">
+                {predictions.predictions.map((num, index) => <LotoBall key={`pred-${num}-${index}`} size="lg" number={num} />)}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                 <div>
                     <h4 className="text-lg font-semibold text-foreground">Score de Confiance :</h4>
                     <p className="text-lg text-primary font-bold">{predictions.confidenceScore}</p>
